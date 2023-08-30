@@ -3,7 +3,7 @@ import { cannotForItem, getOperationAccess, getAccessFilters } from '../access-c
 import { checkFilterOrderAccess } from '../filter-order-access'
 import { accessDeniedError } from '../graphql-errors'
 import type { InitialisedList } from '../initialise-lists'
-import { getWriteLimit, runWithPrisma } from '../utils'
+import { runWithPrisma } from '../utils'
 import { type InputFilter, resolveUniqueWhereInput, type UniqueInputFilter } from '../where-inputs'
 import { getAccessControlledItemForDelete } from './access-control'
 import { runSideEffectOnlyHook } from './hooks'
@@ -40,12 +40,9 @@ async function deleteSingle (
   // Before operation
   await runSideEffectOnlyHook(list, 'beforeOperation', hookArgs)
 
-  const writeLimit = getWriteLimit(context)
-
-  const newItem = await writeLimit(() =>
-    runWithPrisma(context, list, model => model.delete({ where: { id: item.id } }))
+  const newItem = await runWithPrisma(context, list, model =>
+    model.delete({ where: { id: item.id } })
   )
-
   await runSideEffectOnlyHook(list, 'afterOperation', {
     ...hookArgs,
     item: undefined,

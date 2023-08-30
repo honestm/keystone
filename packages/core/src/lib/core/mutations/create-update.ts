@@ -6,7 +6,6 @@ import {
   getDBFieldKeyForFieldOnMultiField,
   type IdType,
   runWithPrisma,
-  getWriteLimit,
   getPrismaNamespace,
 } from '../utils'
 import { type InputFilter, resolveUniqueWhereInput, type UniqueInputFilter } from '../where-inputs'
@@ -46,14 +45,9 @@ async function createSingle (
     undefined
   )
 
-  const writeLimit = getWriteLimit(context)
-
-  const item = await writeLimit(() =>
-    runWithPrisma(context, list, model =>
-      model.create({ data: list.isSingleton ? { ...data, id: 1 } : data })
-    )
+  const item = await runWithPrisma(context, list, model =>
+    model.create({ data: list.isSingleton ? { ...data, id: 1 } : data })
   )
-
   return { item, afterOperation }
 }
 
@@ -119,14 +113,15 @@ async function updateSingle (
   accessFilters: boolean | InputFilter
 ) {
   const { where: uniqueInput, data: rawData } = updateInput
-  // Validate and resolve the input filter
+
+  // validate and resolve the input filter
   const uniqueWhere = await resolveUniqueWhereInput(uniqueInput, list, context)
 
-  // Check filter access
+  // check filter access
   const fieldKey = Object.keys(uniqueWhere)[0]
   await checkFilterOrderAccess([{ fieldKey, list }], context, 'filter')
 
-  // Filter and Item access control. Will throw an accessDeniedError if not allowed.
+  // filter and item access control - throws an AccessDeniedError if not allowed
   const item = await getAccessControlledItemForUpdate(
     list,
     context,
@@ -142,14 +137,11 @@ async function updateSingle (
     item
   )
 
-  const writeLimit = getWriteLimit(context)
-
-  const updatedItem = await writeLimit(() =>
-    runWithPrisma(context, list, model => model.update({ where: { id: item.id }, data }))
+  const updatedItem = await runWithPrisma(context, list, model =>
+    model.update({ where: { id: item.id }, data })
   )
 
   await afterOperation(updatedItem)
-
   return updatedItem
 }
 
@@ -161,7 +153,7 @@ export async function updateOne (
   const operationAccess = await getOperationAccess(list, context, 'update')
   if (!operationAccess) throw accessDeniedError(cannotForItem('update', list))
 
-  // Get list-level access control filters
+  // get list-level access control filters
   const accessFilters = await getAccessFilters(list, context, 'update')
 
   return updateSingle(updateInput, list, context, accessFilters)
@@ -174,7 +166,7 @@ export async function updateMany (
 ) {
   const operationAccess = await getOperationAccess(list, context, 'update')
 
-  // Get list-level access control filters
+  // get list-level access control filters
   const accessFilters = await getAccessFilters(list, context, 'update')
 
   return data.map(async updateInput => {

@@ -167,26 +167,6 @@ export function getDBFieldKeyForFieldOnMultiField (fieldKey: string, subField: s
   return `${fieldKey}_${subField}`
 }
 
-// this whole thing exists because Prisma doesn't handle doing multiple writes on SQLite well
-// https://github.com/prisma/prisma/issues/2955
-// note this is keyed by the prisma client instance, not the context
-// because even across requests, we want to apply the limit on SQLite
-const writeLimits = new WeakMap<object, Limit>()
-
-export function setWriteLimit (prismaClient: object, limit: Limit) {
-  writeLimits.set(prismaClient, limit)
-}
-
-// this accepts the context instead of the prisma client because the prisma client on context is `any`
-// so by accepting the context, it'll be less likely the wrong thing will be passed.
-export function getWriteLimit (context: KeystoneContext) {
-  const limit = writeLimits.get(context.prisma)
-  if (limit === undefined) {
-    throw new Error('unexpected write limit not set for prisma client')
-  }
-  return limit
-}
-
 const prismaNamespaces = new WeakMap<object, PrismaModule['Prisma']>()
 
 export function setPrismaNamespace (prismaClient: object, prismaNamespace: PrismaModule['Prisma']) {

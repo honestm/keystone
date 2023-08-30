@@ -1,5 +1,4 @@
 import { randomBytes } from 'node:crypto'
-import pLimit from 'p-limit'
 import type { FieldData, KeystoneConfig } from '../types'
 
 import type { PrismaModule } from '../artifacts'
@@ -8,7 +7,7 @@ import { createAdminMeta } from './create-admin-meta'
 import { createGraphQLSchema } from './createGraphQLSchema'
 import { createContext } from './context/createContext'
 import { initialiseLists, type InitialisedList } from './core/initialise-lists'
-import { setPrismaNamespace, setWriteLimit } from './core/utils'
+import { setPrismaNamespace } from './core/utils'
 
 function getSudoGraphQLSchema (config: KeystoneConfig) {
   // This function creates a GraphQLSchema based on a modified version of the provided config.
@@ -118,7 +117,6 @@ export function createSystem (config: KeystoneConfig) {
       })
 
       const prismaClient = injectNewDefaults(prePrismaClient, lists)
-      setWriteLimit(prismaClient, pLimit(config.db.provider === 'sqlite' ? 1 : Infinity))
       setPrismaNamespace(prismaClient, prismaModule.Prisma)
 
       const context = createContext({
