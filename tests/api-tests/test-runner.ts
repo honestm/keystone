@@ -1,17 +1,21 @@
-import path from 'path'
-import fs from 'fs/promises'
-import { readdirSync } from 'fs'
-import os from 'os'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { join } from 'node:path'
+import { randomBytes } from 'node:crypto'
+import { readdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import {
-  createDatabase,
   getConfig,
   getDMMF,
   parseEnvValue,
   printConfigWarnings,
 } from '@prisma/internals'
 import { getPrismaClient, objectEnumValues } from '@prisma/client/runtime/library'
+import {
+  externalToInternalDmmf
 // @ts-expect-error
-import { externalToInternalDmmf } from '@prisma/client/generator-build'
+} from '@prisma/client/generator-build'
+
 import {
   initConfig,
   createSystem,
@@ -19,63 +23,44 @@ import {
 } from '@keystone-6/core/system'
 import supertest, { type Test } from 'supertest'
 import type { BaseKeystoneTypeInfo, KeystoneConfig, KeystoneContext } from '@keystone-6/core/types'
-import {
-  getCommittedArtifacts,
-  type PrismaModule,
-} from '@keystone-6/core/___internal-do-not-use-will-break-in-patch/artifacts'
-import prismaClientPackageJson from '@prisma/client/package.json'
+import { generatePrismaAndGraphQLSchemas, type PrismaModule } from '@keystone-6/core/___internal-do-not-use-will-break-in-patch/artifacts'
 import { runMigrateWithDbUrl, withMigrate } from '../../packages/core/src/lib/migrations'
-import { dbProvider, dbUrl, SQLITE_DATABASE_FILENAME } from './utils'
 
-// you could call this a memory leak but it ends up being fine
-// because we're only going to run this on a reasonably small number of schemas and then exit
-const prismaModuleCache = new Map<string, PrismaModule>()
-
-// a modified version of https://github.com/prisma/prisma/blob/bbdf1c23653a77b0b5bf7d62efd243dcebea018b/packages/client/src/utils/getTestClient.ts
-// yes, it's totally relying on implementation details
-// we're okay with that because otherwise the performance of our tests is very bad
-const tmpdir = os.tmpdir()
-
-const prismaSchemaDirectory = path.join(tmpdir, Math.random().toString(36).slice(2))
-
-const prismaSchemaPath = path.join(prismaSchemaDirectory, 'schema.prisma')
-
-const prismaEnginesDir = path.dirname(require.resolve('@prisma/engines/package.json'))
-
-const prismaEnginesDirEntries = readdirSync(prismaEnginesDir)
-
-const queryEngineFilename = prismaEnginesDirEntries.find(dir => dir.startsWith('libquery_engine'))
-
-if (!queryEngineFilename) {
-  throw new Error('Could not find query engine')
+// PRISMA
+{
+  const prismaEnginesDir = path.dirname(require.resolve('@prisma/engines/package.json'))
+  const prismaEnginesDirEntries = readdirSync(prismaEnginesDir)
+  const queryEngineFilename = prismaEnginesDirEntries.find(dir => dir.startsWith('libquery_engine'))
+  if (!queryEngineFilename) throw new Error('Could not find query engine')
+  process.env.PRISMA_QUERY_ENGINE_LIBRARY = path.join(prismaEnginesDir, queryEngineFilename)
 }
+// PRISMA
 
-process.env.PRISMA_QUERY_ENGINE_LIBRARY = path.join(prismaEnginesDir, queryEngineFilename)
-
-async function getTestPrismaModuleInner (schema: string) {
-  const config = await getConfig({ datamodel: schema, ignoreEnvVarErrors: true })
+// somewhat equivalent to https://github.com/prisma/prisma/blob/main/packages/client/src/utils/getTestClient.ts
+//   ?except without a redundant directory?
+async function getTestPrismaModuleInner (prismaSchemaPath: string, datamodel: string) {
+  const config = await getConfig({ datamodel, ignoreEnvVarErrors: true })
   printConfigWarnings(config.warnings)
 
   const generator = config.generators.find(g => parseEnvValue(g.provider) === 'prisma-client-js')
-
-  const document = externalToInternalDmmf(
-    await getDMMF({ datamodel: schema, previewFeatures: [] })
-  )
+  const document = await getDMMF({ datamodel, previewFeatures: [] })
   const activeProvider = config.datasources[0].activeProvider
-  const options: Parameters<typeof getPrismaClient>[0] = {
-    document,
-    generator,
-    dirname: prismaSchemaDirectory,
-    relativePath: '',
-    clientVersion: prismaClientPackageJson.version,
-    engineVersion: 'engine-test-version',
-    relativeEnvPaths: {},
-    datasourceNames: config.datasources.map(d => d.name),
-    activeProvider,
-    dataProxy: false,
-  }
+
   return {
-    PrismaClient: getPrismaClient(options) as any,
+    PrismaClient: getPrismaClient({
+      document: externalToInternalDmmf(document),
+      generator,
+      dirname: path.dirname(prismaSchemaPath),
+      relativePath: '',
+
+      clientVersion: '0.0.0',
+      engineVersion: '0000000000000000000000000000000000000000',
+      relativeEnvPaths: {},
+
+      datasourceNames: config.datasources.map(d => d.name),
+      activeProvider,
+      dataProxy: false,
+    }) as any,
     Prisma: {
       DbNull: objectEnumValues.instances.DbNull,
       JsonNull: objectEnumValues.instances.JsonNull,
@@ -83,70 +68,65 @@ async function getTestPrismaModuleInner (schema: string) {
   }
 }
 
-async function getTestPrismaModule (schema: string) {
+const prismaModuleCache = new Map<string, PrismaModule>()
+async function getTestPrismaModule (prismaSchemaPath: string, schema: string) {
   if (prismaModuleCache.has(schema)) return prismaModuleCache.get(schema)!
-  return prismaModuleCache.set(schema, await getTestPrismaModuleInner(schema)).get(schema)!
+  return prismaModuleCache.set(schema, await getTestPrismaModuleInner(prismaSchemaPath, schema)).get(schema)!
 }
 
+const deferred: (() => Promise<void>)[] = []
 afterAll(async () => {
-  await fs.rm(prismaSchemaDirectory, { recursive: true, force: true })
+  for (const f of deferred) {
+    await f()
+  }
 })
 
-let hasCreatedDatabase = false
-
-async function pushSchemaToDatabase (schema: string) {
-  if (dbProvider === 'sqlite') {
-    // touch the file (or truncate it), easiest way to start from scratch
-    await fs.writeFile(path.join(prismaSchemaDirectory, SQLITE_DATABASE_FILENAME), '')
-    await withMigrate(prismaSchemaPath, migrate =>
-      runMigrateWithDbUrl(dbUrl, undefined, () =>
-        migrate.engine.schemaPush({
-          force: true,
-          schema,
-        })
-      )
-    )
-    return
-  }
-  let justCreatedDatabase = hasCreatedDatabase
-    ? false
-    : await createDatabase(dbUrl, prismaSchemaDirectory)
-  await withMigrate(prismaSchemaPath, async migrate => {
-    if (!justCreatedDatabase) {
-      await runMigrateWithDbUrl(dbUrl, undefined, () => migrate.reset())
-    }
-    await runMigrateWithDbUrl(dbUrl, undefined, () =>
-      migrate.engine.schemaPush({
-        force: true,
-        schema,
-      })
-    )
+async function testConfig2<TypeInfo extends BaseKeystoneTypeInfo> (config: KeystoneConfig<TypeInfo>) {
+  const tmp = join(tmpdir(), `ks6-tests-${randomBytes(8).toString('base64url')}`)
+  await fs.mkdir(tmp)
+  deferred.push(async () => {
+    await fs.rm(tmp, { recursive: true, force: true })
   })
-  hasCreatedDatabase = true
-}
 
-let lastWrittenSchema = ''
+  return initConfig({
+    types: {
+      path: join(tmp, 'test-types.ts')
+    },
+    ...config,
+    db: {
+      ...config.db,
+      // see api-tests/utils.ts
+      url: config.db.url === 'file:./test.db' ? `file:${join(tmp, 'test.db')}` : config.db.url,
+      prismaClientPath: join(tmp, '.client'),
+      prismaSchemaPath: join(tmp, 'schema.prisma'),
+    },
+    graphql: {
+      schemaPath: join(tmp, 'schema.graphql'),
+      ...config.graphql,
+    }
+  })
+}
 
 export async function setupTestEnv<TypeInfo extends BaseKeystoneTypeInfo> (
   config_: KeystoneConfig<TypeInfo>
 ) {
-  // UI is always disabled
-  const config = initConfig({
-    ...config_,
-    ui: { ...config_.ui, isDisabled: true },
+  const config = await testConfig2(config_)
+  const { graphQLSchema, getKeystone } = createSystem(config)
+  const artifacts = await generatePrismaAndGraphQLSchemas('', config, graphQLSchema)
+
+  // setup (reset) the database
+  await withMigrate(config.db.prismaSchemaPath, async migrate => {
+    await runMigrateWithDbUrl(config.db.url, undefined, () => migrate.reset())
+
+    return await runMigrateWithDbUrl(config.db.url, undefined, () => {
+      return migrate.engine.schemaPush({
+        force: true,
+        schema: artifacts.prisma,
+      })
+    })
   })
 
-  const { graphQLSchema, getKeystone } = createSystem(config)
-  const artifacts = await getCommittedArtifacts(config, graphQLSchema)
-
-  if (lastWrittenSchema !== artifacts.prisma) {
-    if (!lastWrittenSchema) {
-      await fs.mkdir(prismaSchemaDirectory, { recursive: true })
-    }
-    await fs.writeFile(prismaSchemaPath, artifacts.prisma)
-  }
-  await pushSchemaToDatabase(artifacts.prisma)
-  return getKeystone(await getTestPrismaModule(artifacts.prisma))
+  return getKeystone(await getTestPrismaModule(config.db.prismaSchemaPath, artifacts.prisma))
 }
 
 type GQLArgs = {
@@ -212,12 +192,12 @@ export function setupTestRunner<TypeInfo extends BaseKeystoneTypeInfo> ({
     }
 
     try {
-			return await testFn({
+      return await testFn({
         context,
-				config,
-				http: noop,
-				gql: gql as any // TODO: uh
-			})
+        config,
+        http: noop,
+        gql: gql as any // TODO: uh
+      })
     } finally {
       await disconnect()
     }

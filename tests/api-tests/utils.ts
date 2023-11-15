@@ -41,14 +41,15 @@ if (workerId === undefined) {
   throw new Error('expected JEST_WORKER_ID to be set')
 }
 
-export const SQLITE_DATABASE_FILENAME = `test.db`
-
 export const { dbUrl, dbName } = ((): { dbUrl: string, dbName: string } => {
   if (dbProvider === 'sqlite') {
-    return { dbUrl: `file:./${SQLITE_DATABASE_FILENAME}`, dbName: SQLITE_DATABASE_FILENAME }
+    return {
+      dbUrl: `file:./test.db`,
+      dbName: 'test.db'
+    }
   }
-  const dbUrl = process.env.DATABASE_URL
 
+  const dbUrl = process.env.DATABASE_URL
   if (dbUrl === undefined) {
     throw new Error(`DATABASE_URL must be set when using TEST_ADAPTER=${dbProvider}`)
   }
@@ -87,6 +88,11 @@ export function testConfig (
       provider: dbProvider,
       url: dbUrl,
       ...config.db,
+    },
+    // default to a disabled UI
+    ui: {
+      isDisabled: true,
+      ...config.ui
     },
   }
 }
