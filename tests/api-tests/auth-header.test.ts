@@ -3,7 +3,7 @@ import { list } from '@keystone-6/core'
 import { statelessSessions } from '@keystone-6/core/session'
 import { createAuth } from '@keystone-6/auth'
 import type { KeystoneContext } from '@keystone-6/core/types'
-import { setupTestRunner, setupTestEnv } from '@keystone-6/api-tests/test-runner'
+import { setupTestRunner } from '@keystone-6/api-tests/test-runner'
 import { allowAll } from '@keystone-6/core/access'
 import { testConfig, expectAccessDenied, seed } from './utils'
 import { type GraphQLRequest, withServer } from './with-server'
@@ -106,7 +106,7 @@ describe('Auth testing', () => {
       sessionData: 'id',
     })
     await expect(
-      setupTestEnv({
+      await setupTestRunner({
         config: auth.withAuth(
           testConfig({
             lists: {
@@ -123,7 +123,7 @@ describe('Auth testing', () => {
             session: statelessSessions({ secret: COOKIE_SECRET }),
           })
         ),
-      })
+      })(async () => {})
     ).rejects.toMatchInlineSnapshot(
       `[Error: createAuth was called with an identityField of email on the list User but that field doesn't allow being searched uniquely with a String or ID. You should likely add \`isIndexed: 'unique'\` to the field at User.email]`
     )

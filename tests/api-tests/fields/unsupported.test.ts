@@ -47,8 +47,8 @@ if (unsupportedModules.length > 0) {
         test('Throws', async () => {
           await expect(
             async () =>
-              await setupTestEnv({
-                config: testConfig({
+              await setupTestEnv(
+                testConfig({
                   lists: {
                     [listKey]: list({
                       access: allowAll,
@@ -76,7 +76,7 @@ if (unsupportedModules.length > 0) {
                     },
                   },
                 }),
-              })
+              )
           ).rejects.toThrow(Error)
         })
       })

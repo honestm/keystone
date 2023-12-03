@@ -46,8 +46,8 @@ testModules
         })
 
         const getSchema = async (fieldConfig: TextFieldConfig) => {
-          const { testArgs } = await setupTestEnv({
-            config: testConfig({
+          const { context } = await setupTestEnv(
+            testConfig({
               lists: {
                 Test: list({
                   access: allowAll,
@@ -81,8 +81,8 @@ testModules
                 },
               },
             }),
-          })
-          return testArgs.context.graphql.schema
+          )
+          return context.graphql.schema
         }
 
         if (mod.supportsGraphQLIsNonNull) {

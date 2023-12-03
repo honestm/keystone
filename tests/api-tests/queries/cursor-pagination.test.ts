@@ -1,9 +1,9 @@
 import { type KeystoneContext } from '@keystone-6/core/types'
-import { setupTestEnv, type TestEnv } from '@keystone-6/api-tests/test-runner'
+import { setupTestEnv } from '@keystone-6/api-tests/test-runner'
 import { text, relationship, integer } from '@keystone-6/core/fields'
 import { list } from '@keystone-6/core'
 import { allowAll } from '@keystone-6/core/access'
-import { type TypeInfoFromConfig, testConfig } from '../utils'
+import { testConfig } from '../utils'
 
 const config = testConfig({
   lists: {
@@ -25,16 +25,18 @@ const config = testConfig({
 })
 
 describe('cursor pagination basic tests', () => {
-  let testEnv: TestEnv<TypeInfoFromConfig<typeof config>>
   let context: KeystoneContext
   let posts: { id: string }[]
   let userId: string
 
   beforeAll(async () => {
-    testEnv = await setupTestEnv({ config })
-    context = testEnv.testArgs.context
+    const { context: context_, connect, disconnect } = await setupTestEnv(config)
+    context = context_
+    await connect()
 
-    await testEnv.connect()
+    afterAll(async () => {
+      await disconnect()
+    })
 
     const result = await context.query.User.createOne({
       data: {
@@ -48,9 +50,6 @@ describe('cursor pagination basic tests', () => {
     userId = result.id
     // posts will be added in random sequence, so need to sort by order
     posts = result.posts.sort((a: { order: number }, b: { order: number }) => a.order - b.order)
-  })
-  afterAll(async () => {
-    await testEnv.disconnect()
   })
 
   test('cursor pagination test (graphql api)', async () => {
@@ -187,15 +186,16 @@ describe('cursor pagination basic tests', () => {
 })
 
 describe('cursor pagination stability', () => {
-  let testEnv: TestEnv<TypeInfoFromConfig<typeof config>>
   let context: KeystoneContext
   let posts: { id: string }[]
 
   beforeEach(async () => {
-    testEnv = await setupTestEnv({ config })
-    context = testEnv.testArgs.context
+    const { context, connect, disconnect } = await setupTestEnv(config)
+    await connect()
 
-    await testEnv.connect()
+    afterAll(async () => {
+      await disconnect()
+    })
 
     const result = await context.query.User.createOne({
       data: {
@@ -208,9 +208,6 @@ describe('cursor pagination stability', () => {
     })
     // posts will be added in random sequence, so need to sort by order
     posts = result.posts.sort((a: { order: number }, b: { order: number }) => a.order - b.order)
-  })
-  afterEach(async () => {
-    await testEnv.disconnect()
   })
 
   test('insert rows in the middle of pagination and check stability', async () => {

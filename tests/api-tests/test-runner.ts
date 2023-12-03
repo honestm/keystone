@@ -22,17 +22,6 @@ import prismaClientPackageJson from '@prisma/client/package.json'
 import { runMigrateWithDbUrl, withMigrate } from '../../packages/core/src/lib/migrations'
 import { dbProvider, dbUrl, SQLITE_DATABASE_FILENAME } from './utils'
 
-export type TestArgs<TypeInfo extends BaseKeystoneTypeInfo> = {
-  context: KeystoneContext<TypeInfo>
-  config: KeystoneConfig<TypeInfo>
-}
-
-export type TestEnv<TypeInfo extends BaseKeystoneTypeInfo> = {
-  connect: () => Promise<void>
-  disconnect: () => Promise<void>
-  testArgs: TestArgs<TypeInfo>
-}
-
 // you could call this a memory leak but it ends up being fine
 // because we're only going to run this on a reasonably small number of schemas and then exit
 const generatedPrismaModules = new Map<string, PrismaModule>()
@@ -58,10 +47,7 @@ if (!queryEngineFilename) {
 
 process.env.PRISMA_QUERY_ENGINE_LIBRARY = path.join(prismaEnginesDir, queryEngineFilename)
 
-async function getTestPrismaModule (schema: string): Promise<PrismaModule> {
-  if (generatedPrismaModules.has(schema)) {
-    return generatedPrismaModules.get(schema)!
-  }
+async function getTestPrismaModuleInner (schema: string) {
   const config = await getConfig({ datamodel: schema, ignoreEnvVarErrors: true })
   printConfigWarnings(config.warnings)
 
@@ -83,15 +69,18 @@ async function getTestPrismaModule (schema: string): Promise<PrismaModule> {
     activeProvider,
     dataProxy: false,
   }
-  const prismaModule: PrismaModule = {
+  return {
     PrismaClient: getPrismaClient(options) as any,
     Prisma: {
       DbNull: objectEnumValues.instances.DbNull,
       JsonNull: objectEnumValues.instances.JsonNull,
     },
   }
-  generatedPrismaModules.set(schema, prismaModule)
-  return prismaModule
+}
+
+async function getTestPrismaModule (schema: string) {
+  if (generatedPrismaModules.has(schema)) return generatedPrismaModules.get(schema)!
+  return generatedPrismaModules.set(schema, await getTestPrismaModuleInner(schema)).get(schema)!
 }
 
 afterAll(async () => {
@@ -133,15 +122,13 @@ async function pushSchemaToDatabase (schema: string) {
 
 let lastWrittenSchema = ''
 
-export async function setupTestEnv<TypeInfo extends BaseKeystoneTypeInfo> ({
-  config: _config,
-}: {
-  config: KeystoneConfig<TypeInfo>
-}): Promise<TestEnv<TypeInfo>> {
-  // Force the UI to always be disabled.
+export async function setupTestEnv<TypeInfo extends BaseKeystoneTypeInfo> (
+  config_: KeystoneConfig<TypeInfo>
+) {
+  // UI is always disabled
   const config = initConfig({
-    ..._config,
-    ui: { ..._config.ui, isDisabled: true },
+    ...config_,
+    ui: { ...config_.ui, isDisabled: true },
   })
 
   const { graphQLSchema, getKeystone } = createSystem(config)
@@ -154,16 +141,7 @@ export async function setupTestEnv<TypeInfo extends BaseKeystoneTypeInfo> ({
     await fs.writeFile(prismaSchemaPath, artifacts.prisma)
   }
   await pushSchemaToDatabase(artifacts.prisma)
-
-  const { connect, disconnect, context } = getKeystone(await getTestPrismaModule(artifacts.prisma))
-  return {
-    connect,
-    disconnect,
-    testArgs: {
-      context,
-      config,
-    },
-  }
+  return getKeystone(await getTestPrismaModule(artifacts.prisma))
 }
 
 export function setupTestRunner<TypeInfo extends BaseKeystoneTypeInfo> ({
@@ -171,13 +149,15 @@ export function setupTestRunner<TypeInfo extends BaseKeystoneTypeInfo> ({
 }: {
   config: KeystoneConfig<TypeInfo>
 }) {
-  return (testFn: (testArgs: TestArgs<TypeInfo>) => Promise<void>) => async () => {
-    // Reset the database to be empty for every test.
-    const { connect, disconnect, testArgs } = await setupTestEnv({ config })
+  return (testFn: (testArgs: {
+    context: KeystoneContext<TypeInfo>
+    config: KeystoneConfig<TypeInfo>
+  }) => Promise<void> = async () => {}) => async () => {
+    const { connect, disconnect, context } = await setupTestEnv(config)
     await connect()
 
     try {
-      return await testFn(testArgs)
+      return await testFn({ context, config })
     } finally {
       await disconnect()
     }

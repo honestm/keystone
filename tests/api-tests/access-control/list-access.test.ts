@@ -1,7 +1,7 @@
 import { type GraphQLError, type ExecutionResult } from 'graphql'
 import { type KeystoneContext } from '@keystone-6/core/types'
-import { setupTestEnv, type TestEnv } from '@keystone-6/api-tests/test-runner'
-import { expectAccessDenied, type TypeInfoFromConfig } from '../utils'
+import { setupTestEnv } from '@keystone-6/api-tests/test-runner'
+import { expectAccessDenied } from '../utils'
 import {
   nameFn,
   listAccessVariations,
@@ -37,13 +37,16 @@ const expectNoAccessMany = (
 type IdType = any
 
 describe(`List access`, () => {
-  let testEnv: TestEnv<TypeInfoFromConfig<typeof config>>, context: KeystoneContext
+  let context: KeystoneContext
   let items: Record<string, { id: IdType, name: string }[]>
-  beforeAll(async () => {
-    testEnv = await setupTestEnv({ config })
-    context = testEnv.testArgs.context
 
-    await testEnv.connect()
+  beforeAll(async () => {
+    const { context, connect, disconnect } = await setupTestEnv(config)
+    await connect()
+
+    afterAll(async () => {
+      await disconnect()
+    })
 
     // ensure every list has at least some data
     const initialData: Record<string, { name: string }[]> = listAccessVariations.reduce(
@@ -64,12 +67,9 @@ describe(`List access`, () => {
       })) as { id: IdType, name: string }[]
     }
   })
-  afterAll(async () => {
-    await testEnv.disconnect()
-  })
 
   describe('create', () => {
-    (['operation', 'item'] as const).forEach(mode => {
+    for (const mode of ['operation', 'item'] as const) {
       describe(mode, () => {
         listAccessVariations.forEach(access => {
           test(`denied: - single - ${JSON.stringify(access)}`, async () => {
@@ -109,7 +109,7 @@ describe(`List access`, () => {
           })
         })
       })
-    })
+    }
   })
 
   describe('query', () => {

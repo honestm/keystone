@@ -156,8 +156,8 @@ describe(dbProvider, () => {
             // Try to create a thing and have it fail
             let erroredOut = false
             try {
-              await setupTestEnv({
-                config: testConfig({
+              await setupTestEnv(
+                testConfig({
                   lists: {
                     Test: list({
                       access: allowAll,
@@ -191,7 +191,7 @@ describe(dbProvider, () => {
                     },
                   },
                 }),
-              })
+              )
             } catch (error: any) {
               expect(error.message).toMatch(
                 "isIndexed: 'unique' is not a supported option for field type"

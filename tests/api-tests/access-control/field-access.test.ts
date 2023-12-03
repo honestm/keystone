@@ -1,6 +1,7 @@
-import { setupTestEnv, type TestEnv } from '@keystone-6/api-tests/test-runner'
+import { setupTestEnv } from '@keystone-6/api-tests/test-runner'
+import { type KeystoneContext } from '@keystone-6/core/types'
 import { type ExecutionResult } from 'graphql'
-import { expectAccessDenied, type ContextFromConfig, type TypeInfoFromConfig } from '../utils'
+import { expectAccessDenied } from '../utils'
 import { nameFn, fieldMatrix, getFieldName, getItemListName, config } from './utils'
 
 type IdType = any
@@ -10,15 +11,18 @@ describe(`Field access`, () => {
   const mode = 'item'
   const listKey = nameFn[mode](listAccess)
 
-  let testEnv: TestEnv<TypeInfoFromConfig<typeof config>>
-  let context: ContextFromConfig<typeof config>
+  let context: KeystoneContext
   let items: Record<string, { id: IdType, name: string }[]>
 
   beforeAll(async () => {
-    testEnv = await setupTestEnv({ config })
-    context = testEnv.testArgs.context
 
-    await testEnv.connect()
+  beforeAll(async () => {
+    const { context, connect, disconnect } = await setupTestEnv(config)
+    await connect()
+
+    afterAll(async () => {
+      await disconnect()
+    })
 
     const initialData = { [getItemListName(listAccess)]: [{ name: 'Hello' }, { name: 'Hi' }] }
 
@@ -29,10 +33,6 @@ describe(`Field access`, () => {
         query: 'id, name',
       })) as { id: IdType, name: string }[]
     }
-  })
-
-  afterAll(async () => {
-    await testEnv.disconnect()
   })
 
   describe('read', () => {

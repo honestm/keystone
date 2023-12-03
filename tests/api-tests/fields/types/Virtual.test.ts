@@ -161,27 +161,25 @@ describe('Virtual field type', () => {
 
   test("errors when a non leaf type is used but the field isn't hidden in the Admin UI and ui.query isn't provided", async () => {
     await expect(
-      setupTestEnv({
-        config: testConfig({
-          lists: {
-            Post: list({
-              access: allowAll,
-              fields: {
-                virtual: virtual({
-                  field: graphql.field({
-                    type: graphql.object<any>()({
-                      name: 'Something',
-                      fields: {
-                        something: graphql.field({ type: graphql.String }),
-                      },
-                    }),
+      setupTestEnv(testConfig({
+        lists: {
+          Post: list({
+            access: allowAll,
+            fields: {
+              virtual: virtual({
+                field: graphql.field({
+                  type: graphql.object<any>()({
+                    name: 'Something',
+                    fields: {
+                      something: graphql.field({ type: graphql.String }),
+                    },
                   }),
                 }),
-              },
-            }),
-          },
-        }),
-      })
+              }),
+            },
+          }),
+        },
+      }))
     ).rejects.toMatchInlineSnapshot(`
             [Error: The virtual field at Post.virtual requires a selection for the Admin UI but ui.query is unspecified and ui.listView.fieldMode and ui.itemView.fieldMode are not both set to 'hidden'.
             Either set ui.query with what the Admin UI should fetch or hide the field from the Admin UI by setting ui.listView.fieldMode and ui.itemView.fieldMode to 'hidden'.
