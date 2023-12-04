@@ -141,6 +141,7 @@ async function updateSingle (
     model.update({ where: { id: item.id }, data })
   )
 
+  // after operation
   await afterOperation(updatedItem)
   return updatedItem
 }
