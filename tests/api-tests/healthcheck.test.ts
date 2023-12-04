@@ -2,38 +2,35 @@ import { list } from '@keystone-6/core'
 import { allowAll } from '@keystone-6/core/access'
 import { text } from '@keystone-6/core/fields'
 import { setupTestRunner } from '@keystone-6/api-tests/test-runner'
-import supertest from 'supertest'
 import { testConfig } from './utils'
-import { withServer } from './with-server'
 
 const makeRunner = (healthCheck: any) =>
-  withServer(
-    setupTestRunner({
-      config: testConfig({
-        lists: {
-          User: list({
-            access: allowAll,
-            fields: {
-              name: text()
-            }
-          }),
-        },
-        server: { healthCheck },
-      }),
-    })
-  )
+  setupTestRunner({
+    config: testConfig({
+      lists: {
+        User: list({
+          access: allowAll,
+          fields: {
+            name: text()
+          }
+        }),
+      },
+      server: { healthCheck },
+    }),
+    serve: true
+  })
 
 test(
   'No health check',
-  makeRunner(undefined)(async ({ app }) => {
-    await supertest(app).get('/_healthcheck').set('Accept', 'application/json').expect(404)
+  makeRunner(undefined)(async ({ http }) => {
+    await http().get('/_healthcheck').set('Accept', 'application/json').expect(404)
   })
 )
 
 test(
   'Default health check',
-  makeRunner(true)(async ({ app }) => {
-    const { text } = await supertest(app)
+  makeRunner(true)(async ({ http }) => {
+    const { text } = await http()
       .get('/_healthcheck')
       .set('Accept', 'application/json')
       .expect('Content-Type', /json/)
@@ -47,8 +44,8 @@ test(
 
 test(
   'Custom path',
-  makeRunner({ path: '/custom' })(async ({ app }) => {
-    const { text } = await supertest(app)
+  makeRunner({ path: '/custom' })(async ({ http }) => {
+    const { text } = await http()
       .get('/custom')
       .set('Accept', 'application/json')
       .expect('Content-Type', /json/)
@@ -62,8 +59,8 @@ test(
 
 test(
   'Custom data: object',
-  makeRunner({ data: { foo: 'bar' } })(async ({ app }) => {
-    const { text } = await supertest(app)
+  makeRunner({ data: { foo: 'bar' } })(async ({ http }) => {
+    const { text } = await http()
       .get('/_healthcheck')
       .set('Accept', 'application/json')
       .expect('Content-Type', /json/)
@@ -74,8 +71,8 @@ test(
 
 test(
   'Custom data: function',
-  makeRunner({ data: () => ({ foo: 'bar' }) })(async ({ app }) => {
-    const { text } = await supertest(app)
+  makeRunner({ data: () => ({ foo: 'bar' }) })(async ({ http }) => {
+    const { text } = await http()
       .get('/_healthcheck')
       .set('Accept', 'application/json')
       .expect('Content-Type', /json/)

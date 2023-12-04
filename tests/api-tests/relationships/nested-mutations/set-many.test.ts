@@ -8,7 +8,6 @@ import {
   expectGraphQLValidationError,
   expectSingleRelationshipError,
 } from '../../utils'
-import { withServer } from '../../with-server'
 
 const alphanumGenerator = gen.alphaNumString.notEmpty()
 
@@ -161,8 +160,8 @@ describe('no access control', () => {
 
   test(
     'causes a validation error if used during create',
-    withServer(runner)(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ context }) => {
+      const { errors } = await context.graphql.raw({
         query: `
           mutation {
             createUser(data: { notes: { set: [] } }) {
@@ -170,8 +169,8 @@ describe('no access control', () => {
             }
           }
         `,
-      }).expect(400)
-      expectGraphQLValidationError(body.errors, [
+      })
+      expectGraphQLValidationError(errors, [
         {
           message: `Field "set" is not defined by type "NoteRelateToManyForCreateInput".`,
         },

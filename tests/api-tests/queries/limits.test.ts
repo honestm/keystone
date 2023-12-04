@@ -3,45 +3,43 @@ import { list } from '@keystone-6/core'
 import { setupTestRunner } from '@keystone-6/api-tests/test-runner'
 import { allowAll } from '@keystone-6/core/access'
 import { testConfig, expectGraphQLValidationError } from '../utils'
-import { withServer } from '../with-server'
 import { depthLimit, definitionLimit, fieldLimit } from './validation'
 
-const runner = withServer(
-  setupTestRunner({
-    config: testConfig({
-      lists: {
-        Post: list({
-          access: allowAll,
-          fields: {
-            title: text(),
-            author: relationship({ ref: 'User.posts', many: true }),
-          },
-          graphql: {
-            maxTake: 3,
-          },
-        }),
-        User: list({
-          access: allowAll,
-          fields: {
-            name: text(),
-            favNumber: integer(),
-            posts: relationship({ ref: 'Post.author', many: true }),
-          },
-        }),
-      },
-      graphql: {
-        apolloConfig: {
-          validationRules: [depthLimit(3), definitionLimit(3), fieldLimit(8)],
+const runner = setupTestRunner({
+  config: testConfig({
+    lists: {
+      Post: list({
+        access: allowAll,
+        fields: {
+          title: text(),
+          author: relationship({ ref: 'User.posts', many: true }),
         },
+        graphql: {
+          maxTake: 3,
+        },
+      }),
+      User: list({
+        access: allowAll,
+        fields: {
+          name: text(),
+          favNumber: integer(),
+          posts: relationship({ ref: 'Post.author', many: true }),
+        },
+      }),
+    },
+    graphql: {
+      apolloConfig: {
+        validationRules: [depthLimit(3), definitionLimit(3), fieldLimit(8)],
       },
-    }),
-  })
-)
+    },
+  }),
+  serve: true
+})
 
 describe('graphql.maxTake', () => {
   test(
     'uses the default when querying',
-    runner(async ({ context, graphQLRequest }) => {
+    runner(async ({ context, gql }) => {
       await context.db.Post.createMany({
         data: [
           {
@@ -53,7 +51,7 @@ describe('graphql.maxTake', () => {
         ],
       })
 
-      const { body } = await graphQLRequest({
+      const { body } = await gql({
         query: `
           query {
             posts {
@@ -69,10 +67,10 @@ describe('graphql.maxTake', () => {
 
   test(
     'enforces the default',
-    runner(async ({ graphQLRequest }) => {
+    runner(async ({ gql }) => {
       const {
         body: { errors },
-      } = await graphQLRequest({
+      } = await gql({
         query: `
           query {
             posts(take: 5) {
@@ -93,8 +91,8 @@ describe('graphql.maxTake', () => {
 describe('maximum depth limit', () => {
   test(
     'nested query',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         query: `
           query {
             posts {
@@ -116,8 +114,8 @@ describe('maximum depth limit', () => {
 
   test(
     'nested mutation',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         query: `
           mutation {
             updatePost(where: { id: "foo" }, data: { title: "bar" }) {
@@ -139,8 +137,8 @@ describe('maximum depth limit', () => {
 
   test(
     'nested query (1 fragment)',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         query: `
         query nestingbomb {
           posts {
@@ -163,8 +161,8 @@ describe('maximum depth limit', () => {
 
   test(
     'nested query (3 fragments)',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         query: `
         query nestingbomb {
           posts {
@@ -191,8 +189,8 @@ describe('maximum depth limit', () => {
   // disallowed by GraphQL, but needs to be handled
   test(
     'circular fragments',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         query: `
             query nestingbomb {
               posts {
@@ -225,8 +223,8 @@ describe('maximum depth limit', () => {
   // disallowed by GraphQL, but needs to be handled
   test(
     'undefined fragment',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         query: `
             query {
               posts {
@@ -248,8 +246,8 @@ describe('maximum depth limit', () => {
 describe('maximum definitions limit', () => {
   test(
     'too many queries',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         operationName: 'a',
         query: `
             query a {
@@ -283,8 +281,8 @@ describe('maximum definitions limit', () => {
 
   test(
     'too many fragments',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         operationName: 'q1',
         query: `
             fragment f1 on Post {
@@ -314,8 +312,8 @@ describe('maximum definitions limit', () => {
 
   test(
     'too many mutations',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         operationName: 'm1',
         query: `
             mutation m1 {
@@ -352,8 +350,8 @@ describe('maximum definitions limit', () => {
 describe('maximum fields limit', () => {
   test(
     'one operation',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         query: `
             query {
               posts {
@@ -382,8 +380,8 @@ describe('maximum fields limit', () => {
 
   test(
     'many operations',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         operationName: 'a',
         query: `
             query a {
@@ -418,8 +416,8 @@ describe('maximum fields limit', () => {
 
   test(
     'fragments',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         operationName: 'a',
         query: `
             fragment f on User {
@@ -451,8 +449,8 @@ describe('maximum fields limit', () => {
 
   test(
     'unused fragment',
-    runner(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         operationName: 'a',
         query: `
             fragment unused on User {
@@ -489,9 +487,9 @@ describe('maximum fields limit', () => {
 
   test(
     'billion laughs',
-    runner(async ({ graphQLRequest }) => {
+    runner(async ({ gql }) => {
       // https://en.wikipedia.org/wiki/Billion_laughs
-      const { body } = await graphQLRequest({
+      const { body } = await gql({
         operationName: 'a',
         query: `
             query a {

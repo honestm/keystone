@@ -12,7 +12,12 @@ import {
 import { getPrismaClient, objectEnumValues } from '@prisma/client/runtime/library'
 // @ts-expect-error
 import { externalToInternalDmmf } from '@prisma/client/generator-build'
-import { initConfig, createSystem } from '@keystone-6/core/system'
+import {
+  initConfig,
+  createSystem,
+  createExpressServer
+} from '@keystone-6/core/system'
+import supertest, { type Test } from 'supertest'
 import type { BaseKeystoneTypeInfo, KeystoneConfig, KeystoneContext } from '@keystone-6/core/types'
 import {
   getCommittedArtifacts,
@@ -144,20 +149,75 @@ export async function setupTestEnv<TypeInfo extends BaseKeystoneTypeInfo> (
   return getKeystone(await getTestPrismaModule(artifacts.prisma))
 }
 
+type GQLArgs = {
+  query: string
+  variables?: Record<string, any>
+  operationName?: string
+}
+type GQLRequest = (args: GQLArgs, headers?: Record<string, string>) => Test
+
 export function setupTestRunner<TypeInfo extends BaseKeystoneTypeInfo> ({
   config,
+  serve = false,
 }: {
   config: KeystoneConfig<TypeInfo>
+  serve?: boolean // otherwise, we mock
 }) {
-  return (testFn: (testArgs: {
+  return (testFn: (args: {
     context: KeystoneContext<TypeInfo>
     config: KeystoneConfig<TypeInfo>
-  }) => Promise<void> = async () => {}) => async () => {
+    http: () => (ReturnType<typeof supertest>)
+    gql: GQLRequest
+  }) => Promise<void>) => async () => {
     const { connect, disconnect, context } = await setupTestEnv(config)
     await connect()
 
+    if (serve) {
+      const {
+        expressServer: app,
+      } = await createExpressServer(config, context.graphql.schema, context)
+
+      function http () {
+        return supertest(app)
+      }
+
+      function gql ({
+        query,
+        variables = undefined,
+        operationName
+      }: GQLArgs) {
+        return http()
+          .post(config.graphql?.path ?? '/api/graphql')
+          .send({ query, variables, operationName })
+          .set('Accept', 'application/json')
+      }
+
+      try {
+        return await testFn({ context, config, http, gql })
+      } finally {
+        await disconnect()
+      }
+    }
+
+    function noop (): never { throw new Error('Not supported') }
+    async function gql ({
+      query,
+      variables = undefined,
+      operationName
+    }: GQLArgs) {
+      const { data, errors } = await context.graphql.raw({ query, variables })
+      return {
+        body: { data, errors }
+      }
+    }
+
     try {
-      return await testFn({ context, config })
+			return await testFn({
+        context,
+				config,
+				http: noop,
+				gql: gql as any // TODO: uh
+			})
     } finally {
       await disconnect()
     }

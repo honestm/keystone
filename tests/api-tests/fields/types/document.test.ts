@@ -5,7 +5,6 @@ import { setupTestEnv, setupTestRunner } from '@keystone-6/api-tests/test-runner
 import { component, fields } from '@keystone-6/fields-document/component-blocks'
 import { allowAll } from '@keystone-6/core/access'
 import { testConfig, type ContextFromRunner, expectInternalServerError } from '../../utils'
-import { withServer } from '../../with-server'
 
 const runner = setupTestRunner({
   config: testConfig({
@@ -257,7 +256,7 @@ describe('Document field type', () => {
 
   test(
     'hydrateRelationships: true - selection has bad fields',
-    withServer(runner)(async ({ context, graphQLRequest }) => {
+    runner(async ({ context }) => {
       const { alice } = await initData({ context })
       const badBob = await context.query.Author.createOne({
         data: {
@@ -280,14 +279,14 @@ describe('Document field type', () => {
         },
       })
 
-      const { body } = await graphQLRequest({
+      const { data, errors } = await context.graphql.raw({
         query:
           'query ($id: ID!){ author(where: { id: $id }) { badBio { document(hydrateRelationships: true) } } }',
         variables: { id: badBob.id },
       })
       // FIXME: The path doesn't match the null field here!
-      expect(body.data).toEqual({ author: { badBio: null } })
-      expectInternalServerError(body.errors, [
+      expect(data).toEqual({ author: { badBio: null } })
+      expectInternalServerError(errors, [
         {
           path: ['author', 'badBio', 'document'],
           message: 'Cannot query field "bad" on type "Author". Did you mean "bio" or "id"?',

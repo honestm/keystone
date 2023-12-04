@@ -6,7 +6,6 @@ import type { KeystoneContext } from '@keystone-6/core/types'
 import { setupTestRunner } from '@keystone-6/api-tests/test-runner'
 import { allowAll } from '@keystone-6/core/access'
 import { testConfig, expectAccessDenied, seed } from './utils'
-import { type GraphQLRequest, withServer } from './with-server'
 
 const initialData = {
   User: [
@@ -15,7 +14,6 @@ const initialData = {
   ],
 }
 
-const COOKIE_SECRET = 'qwertyuiopasdfghjlkzxcvbmnm1234567890'
 const defaultAccess = ({ context }: { context: KeystoneContext }) => !!context.session
 
 function setup (options?: any) {
@@ -27,40 +25,38 @@ function setup (options?: any) {
     ...options,
   })
 
-  return withServer(
-    setupTestRunner({
-      config: auth.withAuth(
-        testConfig({
-          lists: {
-            Post: list({
-              access: allowAll,
-              fields: {
-                title: text(),
-                postedAt: timestamp(),
-              },
-            }),
-            User: list({
-              access: defaultAccess,
-              fields: {
-                name: text(),
-                email: text({ isIndexed: 'unique' }),
-                password: password(),
-              },
-            }),
-          },
-          session: statelessSessions({ secret: COOKIE_SECRET }),
-        })
-      ),
-    })
-  )
+  return setupTestRunner({
+    config: auth.withAuth(
+      testConfig({
+        lists: {
+          Post: list({
+            access: allowAll,
+            fields: {
+              title: text(),
+              postedAt: timestamp(),
+            },
+          }),
+          User: list({
+            access: defaultAccess,
+            fields: {
+              name: text(),
+              email: text({ isIndexed: 'unique' }),
+              password: password(),
+            },
+          }),
+        },
+        session: statelessSessions(),
+      })
+    ),
+  })
 }
 
 async function login (
-  graphQLRequest: GraphQLRequest,
+  gql: any, // TODO: remove
   email: string,
   password: string
 ): Promise<{ sessionToken: string, item: { id: any } }> {
-  const { body } = await graphQLRequest({
+  const { body: { data } } = await gql({
     query: `
       mutation($email: String!, $password: String!) {
         authenticateUserWithPassword(email: $email, password: $password) {
@@ -73,7 +69,7 @@ async function login (
     `,
     variables: { email, password },
   })
-  return body.data?.authenticateUserWithPassword || { sessionToken: '', item: { id: undefined } }
+  return data?.authenticateUserWithPassword || { sessionToken: '', item: { id: undefined } }
 }
 
 describe('Auth testing', () => {
@@ -120,7 +116,7 @@ describe('Auth testing', () => {
               }),
             },
 
-            session: statelessSessions({ secret: COOKIE_SECRET }),
+            session: statelessSessions(),
           })
         ),
       })(async () => {})
@@ -132,19 +128,16 @@ describe('Auth testing', () => {
   describe('logged in', () => {
     test(
       'Allows access with bearer token',
-      setup()(async ({ context, graphQLRequest }) => {
+      setup()(async ({ context, gql }) => {
         await seed(context, initialData)
         const { sessionToken } = await login(
-          graphQLRequest,
+          gql,
           initialData.User[0].email,
           initialData.User[0].password
         )
 
         expect(sessionToken).toBeTruthy()
-        const { body } = await graphQLRequest({ query: '{ users { id } }' }).set(
-          'Authorization',
-          `Bearer ${sessionToken}`
-        )
+        const { body } = await gql({ query: '{ users { id } }' }, { 'Authorization': `Bearer ${sessionToken}` })
         const { data, errors } = body
         expect(data).toHaveProperty('users')
         expect(data.users).toHaveLength(initialData.User.length)
@@ -154,20 +147,17 @@ describe('Auth testing', () => {
 
     test(
       'Allows access with cookie',
-      setup()(async ({ context, graphQLRequest }) => {
+      setup()(async ({ context, gql }) => {
         await seed(context, initialData)
         const { sessionToken } = await login(
-          graphQLRequest,
+          gql,
           initialData.User[0].email,
           initialData.User[0].password
         )
 
         expect(sessionToken).toBeTruthy()
 
-        const { body } = await graphQLRequest({ query: '{ users { id } }' }).set(
-          'Cookie',
-          `keystonejs-session=${sessionToken}`
-        )
+        const { body } = await gql({ query: '{ users { id } }' }, { 'Cookie': `keystonejs-session=${sessionToken}` })
         const { data, errors } = body
         expect(data).toHaveProperty('users')
         expect(data.users).toHaveLength(initialData.User.length)
@@ -177,12 +167,9 @@ describe('Auth testing', () => {
 
     test(
       'Invalid session receives nothing',
-      setup()(async ({ context, graphQLRequest }) => {
+      setup()(async ({ context, gql }) => {
         await seed(context, initialData)
-        const { body } = await graphQLRequest({ query: '{ users { id } }' }).set(
-          'Cookie',
-          `keystonejs-session=invalidfoo`
-        )
+        const { body } = await gql({ query: '{ users { id } }' }, { 'Cookie': `keystonejs-session=invalidfoo` })
 
         const { data, errors } = body
         expect(data).toHaveProperty('users')
@@ -193,19 +180,16 @@ describe('Auth testing', () => {
 
     test(
       'Session is dropped if user is removed',
-      setup()(async ({ context, graphQLRequest }) => {
+      setup()(async ({ context, gql }) => {
         const { User: users } = await seed(context, initialData)
         const { sessionToken } = await login(
-          graphQLRequest,
+          gql,
           initialData.User[0].email,
           initialData.User[0].password
         )
 
         {
-          const { body } = await graphQLRequest({ query: '{ users { id } }' }).set(
-            'Cookie',
-            `keystonejs-session=${sessionToken}` // still valid
-          )
+          const { body } = await gql({ query: '{ users { id } }' }, { 'Cookie': `keystonejs-session=${sessionToken}` })
 
           const { data, errors } = body
           expect(data).toHaveProperty('users')
@@ -214,17 +198,13 @@ describe('Auth testing', () => {
         }
 
         // delete the user we authenticated for
-        await graphQLRequest({
+        await gql({
           query: `mutation ($id: ID!) { deleteUser(where: { id: $id }) { id } }`,
           variables: { id: users[0]?.id },
-        }).set('Cookie', `keystonejs-session=${sessionToken}`)
+        }, { 'Cookie': `keystonejs-session=${sessionToken}` })
 
         {
-          const { body } = await graphQLRequest({ query: '{ users { id } }' }).set(
-            'Cookie',
-            `keystonejs-session=${sessionToken}` // now invalid
-          )
-
+          const { body } = await gql({ query: '{ users { id } }' }, { 'Cookie': `keystonejs-session=${sessionToken}` })
           const { data, errors } = body
           expect(data).toHaveProperty('users')
           expect(data.users).toHaveLength(0) // nothing
@@ -239,13 +219,13 @@ describe('Auth testing', () => {
           sessionData: 'id {',
         })(async () => {})
       ).rejects.toMatchInlineSnapshot(`
-              [Error: The query to get session data has a syntax error, the sessionData option in your createAuth usage is likely incorrect
-              Syntax Error: Expected Name, found "}".
+        [Error: The query to get session data has a syntax error, the sessionData option in your createAuth usage is likely incorrect
+        Syntax Error: Expected Name, found "}".
 
-              GraphQL request:1:51
-              1 | query($id: ID!) { user(where: { id: $id }) { id { } }
-                |                                                   ^]
-            `)
+        GraphQL request:1:51
+        1 | query($id: ID!) { user(where: { id: $id }) { id { } }
+          |                                                   ^]
+      `)
     })
 
     test('Starting up fails if there sessionData configuration has a validation error', async () => {
@@ -254,13 +234,13 @@ describe('Auth testing', () => {
           sessionData: 'id foo', // foo does not exist
         })(async () => {})
       ).rejects.toMatchInlineSnapshot(`
-              [Error: The query to get session data has validation errors, the sessionData option in your createAuth usage is likely incorrect
-              Cannot query field "foo" on type "User".
+        [Error: The query to get session data has validation errors, the sessionData option in your createAuth usage is likely incorrect
+        Cannot query field "foo" on type "User".
 
-              GraphQL request:1:49
-              1 | query($id: ID!) { user(where: { id: $id }) { id foo } }
-                |                                                 ^]
-            `)
+        GraphQL request:1:49
+        1 | query($id: ID!) { user(where: { id: $id }) { id foo } }
+          |                                                 ^]
+      `)
     })
   })
 })

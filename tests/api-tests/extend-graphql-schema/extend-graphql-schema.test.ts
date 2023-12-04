@@ -3,7 +3,6 @@ import { allowAll } from '@keystone-6/core/access'
 import { text } from '@keystone-6/core/fields'
 import { setupTestRunner } from '@keystone-6/api-tests/test-runner'
 import { testConfig, expectInternalServerError } from '../utils'
-import { withServer } from '../with-server'
 
 const falseFn: (...args: any) => boolean = () => false
 
@@ -75,16 +74,16 @@ describe('extendGraphqlSchema', () => {
   )
   it(
     'Denies access acording to access control',
-    withServer(runner)(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ context }) => {
+      const { data, errors } = await context.graphql.raw({
         query: `
           query {
             quads(x: 10)
           }
         `,
       })
-      expect(body.data).toEqual({ quads: null })
-      expectInternalServerError(body.errors, [{ path: ['quads'], message: 'Access denied' }])
+      expect(data).toEqual({ quads: null })
+      expectInternalServerError(errors, [{ path: ['quads'], message: 'Access denied' }])
     })
   )
   it(

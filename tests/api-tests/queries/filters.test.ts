@@ -10,7 +10,6 @@ import {
   expectFilterDenied,
   type ContextFromRunner,
 } from '../utils'
-import { withServer } from '../with-server'
 
 const runner = setupTestRunner({
   config: testConfig({
@@ -77,6 +76,7 @@ const runner = setupTestRunner({
       }),
     },
   }),
+  serve: true
 })
 
 const initialiseData = async ({ context }: { context: ContextFromRunner<typeof runner> }) => {
@@ -287,8 +287,8 @@ describe('searching by unique fields', () => {
 describe('isFilterable', () => {
   test(
     'isFilterable: false',
-    withServer(runner)(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         query: '{ users(where: { filterFalse: { equals: 10 } }) { id } }',
       })
       expectGraphQLValidationError(body.errors, [
@@ -408,8 +408,8 @@ describe('defaultIsFilterable', () => {
 
   test(
     'defaultIsFilterable: false',
-    withServer(runner)(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ gql }) => {
+      const { body } = await gql({
         query: '{ defaultFilterFalses(where: { a: { equals: 10 } }) { id } }',
       })
       expectGraphQLValidationError(body.errors, [

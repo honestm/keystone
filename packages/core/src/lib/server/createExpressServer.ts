@@ -45,7 +45,7 @@ const formatError = (graphqlConfig: GraphQLConfig | undefined) => {
 
 export const createExpressServer = async (
   config: KeystoneConfig,
-  graphQLSchema: GraphQLSchema,
+  graphQLSchema: GraphQLSchema, // TODO: redundant, remove in breaking change
   context: KeystoneContext
 ): Promise<{
   expressServer: express.Express
@@ -118,7 +118,7 @@ export const createExpressServer = async (
   expressServer.use(graphqlUploadExpress({ maxFileSize }))
   await apolloServer.start()
   expressServer.use(
-    config.graphql?.path || '/api/graphql',
+    config.graphql?.path ?? '/api/graphql',
     json(config.graphql?.bodyParser),
     expressMiddleware(apolloServer, {
       context: async ({ req, res }) => {

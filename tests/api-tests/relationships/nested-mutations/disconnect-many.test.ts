@@ -8,7 +8,6 @@ import {
   expectGraphQLValidationError,
   expectSingleRelationshipError,
 } from '../../utils'
-import { withServer } from '../../with-server'
 
 const alphanumGenerator = gen.alphaNumString.notEmpty()
 
@@ -99,8 +98,8 @@ describe('no access control', () => {
 
   test(
     'causes a validation error if used during create',
-    withServer(runner)(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ context }) => {
+      const { errors } = await context.graphql.raw({
         query: `
           mutation {
             createUser(data: { notes: { disconnect: [{ id: "c5b84f38256d3c2df59a0d9bf" }] } }) {
@@ -108,8 +107,8 @@ describe('no access control', () => {
             }
           }
         `,
-      }).expect(400)
-      expectGraphQLValidationError(body.errors, [
+      })
+      expectGraphQLValidationError(errors, [
         {
           message: `Field "disconnect" is not defined by type "NoteRelateToManyForCreateInput". Did you mean \"connect\"?`,
         },

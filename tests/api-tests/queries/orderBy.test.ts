@@ -11,7 +11,6 @@ import {
   expectFilterDenied,
   type ContextFromRunner,
 } from '../utils'
-import { withServer } from '../with-server'
 
 const runner = setupTestRunner({
   config: testConfig({
@@ -71,6 +70,7 @@ const runner = setupTestRunner({
       }),
     },
   }),
+  serve: true
 })
 
 const initialiseData = async ({ context }: { context: ContextFromRunner<typeof runner> }) => {
@@ -358,9 +358,9 @@ describe('Ordering by Multiple', () => {
 describe('isOrderable', () => {
   test(
     'isOrderable: false',
-    withServer(runner)(async ({ context, graphQLRequest }) => {
+    runner(async ({ context, gql }) => {
       await initialiseData({ context })
-      const { body } = await graphQLRequest({
+      const { body } = await gql({
         query: '{ users(orderBy: [{orderFalse: asc}]) { id } }',
       })
       expectGraphQLValidationError(body.errors, [
@@ -483,9 +483,9 @@ describe('defaultIsOrderable', () => {
 
   test(
     'defaultIsOrderable: false',
-    withServer(runner)(async ({ context, graphQLRequest }) => {
+    runner(async ({ context, gql }) => {
       await initialiseData({ context })
-      const { body } = await graphQLRequest({
+      const { body } = await gql({
         query: '{ defaultOrderFalses(orderBy: [{a: asc}]) { id } }',
       })
       expectGraphQLValidationError(body.errors, [

@@ -15,8 +15,6 @@ describe(`Field access`, () => {
   let items: Record<string, { id: IdType, name: string }[]>
 
   beforeAll(async () => {
-
-  beforeAll(async () => {
     const { context, connect, disconnect } = await setupTestEnv(config)
     await connect()
 

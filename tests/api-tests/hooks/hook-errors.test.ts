@@ -1,119 +1,117 @@
 import { relationship, text } from '@keystone-6/core/fields'
 import { list } from '@keystone-6/core'
 import { setupTestRunner } from '@keystone-6/api-tests/test-runner'
-import { type KeystoneContext } from '@keystone-6/core/types'
 import { allowAll } from '@keystone-6/core/access'
 import { testConfig } from '../utils'
-import { type GraphQLRequest, withServer } from '../with-server'
 
-const runner = (debug: boolean | undefined) =>
-  withServer(
-    setupTestRunner({
-      config: testConfig({
-        lists: {
-          User: list({
-            access: allowAll,
-            fields: { name: text() },
-            hooks: {
-              beforeOperation: ({ resolvedData, operation, item }) => {
-                if (operation === 'delete') {
-                  if (item.name === 'trigger before delete') {
-                    throw new Error('Simulated error: beforeOperation')
-                  }
-                } else {
-                  if (resolvedData?.name === 'trigger before') {
-                    throw new Error('Simulated error: beforeOperation')
-                  }
+function runner (debug: boolean | undefined, useHttp: boolean = false) {
+  return setupTestRunner({
+    config: testConfig({
+      lists: {
+        User: list({
+          access: allowAll,
+          fields: { name: text() },
+          hooks: {
+            beforeOperation: ({ resolvedData, operation, item }) => {
+              if (operation === 'delete') {
+                if (item.name === 'trigger before delete') {
+                  throw new Error('Simulated error: beforeOperation')
                 }
-              },
-              afterOperation: ({ resolvedData, operation, originalItem }) => {
-                if (operation === 'delete') {
-                  if (originalItem.name === 'trigger after delete') {
-                    throw new Error('Simulated error: afterOperation')
-                  }
-                } else {
-                  if (resolvedData?.name === 'trigger after') {
-                    throw new Error('Simulated error: afterOperation')
-                  }
+              } else {
+                if (resolvedData?.name === 'trigger before') {
+                  throw new Error('Simulated error: beforeOperation')
                 }
+              }
+            },
+            afterOperation: ({ resolvedData, operation, originalItem }) => {
+              if (operation === 'delete') {
+                if (originalItem.name === 'trigger after delete') {
+                  throw new Error('Simulated error: afterOperation')
+                }
+              } else {
+                if (resolvedData?.name === 'trigger after') {
+                  throw new Error('Simulated error: afterOperation')
+                }
+              }
+            },
+          },
+        }),
+        Post: list({
+          access: allowAll,
+          fields: {
+            title: text({
+              hooks: {
+                beforeOperation: ({ resolvedData, operation, item }) => {
+                  if (operation === 'delete') {
+                    if (item.title === 'trigger before delete') {
+                      throw new Error('Simulated error: title: beforeOperation')
+                    }
+                  } else {
+                    if (resolvedData?.title === 'trigger before') {
+                      throw new Error('Simulated error: title: beforeOperation')
+                    }
+                  }
+                },
+                afterOperation: ({ resolvedData, operation, originalItem }) => {
+                  if (operation === 'delete') {
+                    if (originalItem.title === 'trigger after delete') {
+                      throw new Error('Simulated error: title: afterOperation')
+                    }
+                  } else {
+                    if (resolvedData?.title === 'trigger after') {
+                      throw new Error('Simulated error: title: afterOperation')
+                    }
+                  }
+                },
               },
-            },
-          }),
-          Post: list({
-            access: allowAll,
-            fields: {
-              title: text({
-                hooks: {
-                  beforeOperation: ({ resolvedData, operation, item }) => {
-                    if (operation === 'delete') {
-                      if (item.title === 'trigger before delete') {
-                        throw new Error('Simulated error: title: beforeOperation')
-                      }
-                    } else {
-                      if (resolvedData?.title === 'trigger before') {
-                        throw new Error('Simulated error: title: beforeOperation')
-                      }
+            }),
+            content: text({
+              hooks: {
+                beforeOperation: ({ resolvedData, operation, item }) => {
+                  if (operation === 'delete') {
+                    if (item.content === 'trigger before delete') {
+                      throw new Error('Simulated error: content: beforeOperation')
                     }
-                  },
-                  afterOperation: ({ resolvedData, operation, originalItem }) => {
-                    if (operation === 'delete') {
-                      if (originalItem.title === 'trigger after delete') {
-                        throw new Error('Simulated error: title: afterOperation')
-                      }
-                    } else {
-                      if (resolvedData?.title === 'trigger after') {
-                        throw new Error('Simulated error: title: afterOperation')
-                      }
+                  } else {
+                    if (resolvedData?.content === 'trigger before') {
+                      throw new Error('Simulated error: content: beforeOperation')
                     }
-                  },
+                  }
                 },
-              }),
-              content: text({
-                hooks: {
-                  beforeOperation: ({ resolvedData, operation, item }) => {
-                    if (operation === 'delete') {
-                      if (item.content === 'trigger before delete') {
-                        throw new Error('Simulated error: content: beforeOperation')
-                      }
-                    } else {
-                      if (resolvedData?.content === 'trigger before') {
-                        throw new Error('Simulated error: content: beforeOperation')
-                      }
+                afterOperation: ({ resolvedData, operation, originalItem }) => {
+                  if (operation === 'delete') {
+                    if (originalItem.content === 'trigger after delete') {
+                      throw new Error('Simulated error: content: afterOperation')
                     }
-                  },
-                  afterOperation: ({ resolvedData, operation, originalItem }) => {
-                    if (operation === 'delete') {
-                      if (originalItem.content === 'trigger after delete') {
-                        throw new Error('Simulated error: content: afterOperation')
-                      }
-                    } else {
-                      if (resolvedData?.content === 'trigger after') {
-                        throw new Error('Simulated error: content: afterOperation')
-                      }
+                  } else {
+                    if (resolvedData?.content === 'trigger after') {
+                      throw new Error('Simulated error: content: afterOperation')
                     }
-                  },
+                  }
                 },
-              }),
-            },
-          }),
-          BadResolveInput: list({
-            access: allowAll,
-            fields: {
-              badResolveInput: relationship({
-                ref: 'Post',
-                hooks: {
-                  resolveInput () {
-                    return { blah: true }
-                  },
+              },
+            }),
+          },
+        }),
+        BadResolveInput: list({
+          access: allowAll,
+          fields: {
+            badResolveInput: relationship({
+              ref: 'Post',
+              hooks: {
+                resolveInput () {
+                  return { blah: true }
                 },
-              }),
-            },
-          }),
-        },
-        graphql: { debug },
-      }),
-    })
-  )
+              },
+            }),
+          },
+        }),
+      },
+      graphql: { debug },
+    }),
+    serve: useHttp
+  })
+}
 
 function stripStackTrace (errors: any[] = []) {
   for (const error of errors) {
@@ -125,21 +123,9 @@ function stripStackTrace (errors: any[] = []) {
   return errors
 }
 
+// TODO: use the serve argument in
 [true, false].map(useHttp => {
-  const runQuery = async (
-    context: KeystoneContext,
-    graphQLRequest: GraphQLRequest,
-    query: { query: string, variables?: Record<string, any> }
-  ) => {
-    if (useHttp) {
-      const { body } = await graphQLRequest(query)
-      return body
-    } else {
-      return await context.graphql.raw(query)
-    }
-  };
-
-  [true, false, undefined].map(debug => {
+  ;[true, false, undefined].map(debug => {
     (['dev', 'production'] as const).map(mode =>
       describe(`NODE_ENV=${mode}, debug=${debug} useHttp=${useHttp}`, () => {
         beforeAll(() => {
@@ -155,19 +141,19 @@ function stripStackTrace (errors: any[] = []) {
           describe(`List Hooks: ${phase}Operation`, () => {
             test(
               'createOne',
-              runner(debug)(async ({ context, graphQLRequest }) => {
+              runner(debug, useHttp)(async ({ context, gql }) => {
                 // Valid name should pass
                 await context.query.User.createOne({ data: { name: 'good' } })
 
                 // Trigger an error
-                const { data, errors } = await runQuery(context, graphQLRequest, {
+                const { body } = await gql({
                   query: `mutation ($data: UserCreateInput!) { createUser(data: $data) { id } }`,
                   variables: { data: { name: `trigger ${phase}` } },
                 })
 
                 // Returns null and throws an error
-                expect(data).toEqual({ createUser: null })
-                expect(stripStackTrace(errors)).toMatchSnapshot()
+                expect(body.data).toEqual({ createUser: null })
+                expect(stripStackTrace(body.errors)).toMatchSnapshot()
 
                 // Only the original user should exist for 'before', both exist for 'after'
                 const _users = await context.query.User.findMany({ query: 'id name' })
@@ -179,7 +165,7 @@ function stripStackTrace (errors: any[] = []) {
 
             test(
               'updateOne',
-              runner(debug)(async ({ context, graphQLRequest }) => {
+              runner(debug, useHttp)(async ({ context, gql }) => {
                 // Valid name should pass
                 const user = await context.query.User.createOne({ data: { name: 'good' } })
                 await context.query.User.updateOne({
@@ -188,7 +174,7 @@ function stripStackTrace (errors: any[] = []) {
                 })
 
                 // Invalid name
-                const { data, errors } = await runQuery(context, graphQLRequest, {
+                const { body: { data, errors } } = await gql({
                   query: `mutation ($id: ID! $data: UserUpdateInput!) { updateUser(where: { id: $id }, data: $data) { id } }`,
                   variables: { id: user.id, data: { name: `trigger ${phase}` } },
                 })
@@ -207,7 +193,7 @@ function stripStackTrace (errors: any[] = []) {
 
             test(
               'deleteOne',
-              runner(debug)(async ({ context, graphQLRequest }) => {
+              runner(debug, useHttp)(async ({ context, gql }) => {
                 // Valid names should pass
                 const user1 = await context.query.User.createOne({ data: { name: 'good' } })
                 const user2 = await context.query.User.createOne({
@@ -216,7 +202,7 @@ function stripStackTrace (errors: any[] = []) {
                 await context.query.User.deleteOne({ where: { id: user1.id } })
 
                 // Invalid name
-                const { data, errors } = await runQuery(context, graphQLRequest, {
+                const { body: { data, errors } } = await gql({
                   query: `mutation ($id: ID!) { deleteUser(where: { id: $id }) { id } }`,
                   variables: { id: user2.id },
                 })
@@ -235,9 +221,9 @@ function stripStackTrace (errors: any[] = []) {
 
             test(
               'createMany',
-              runner(debug)(async ({ context, graphQLRequest }) => {
+              runner(debug, useHttp)(async ({ context, gql }) => {
                 // Mix of good and bad names
-                const { data, errors } = await runQuery(context, graphQLRequest, {
+                const { body: { data, errors } } = await gql({
                   query: `mutation ($data: [UserCreateInput!]!) { createUsers(data: $data) { id name } }`,
                   variables: {
                     data: [
@@ -277,7 +263,7 @@ function stripStackTrace (errors: any[] = []) {
 
             test(
               'updateMany',
-              runner(debug)(async ({ context, graphQLRequest }) => {
+              runner(debug, useHttp)(async ({ context, gql }) => {
                 // Start with some users
                 const users = await context.query.User.createMany({
                   data: [
@@ -291,7 +277,7 @@ function stripStackTrace (errors: any[] = []) {
                 })
 
                 // Mix of good and bad names
-                const { data, errors } = await runQuery(context, graphQLRequest, {
+                const { body: { data, errors } } = await gql({
                   query: `mutation ($data: [UserUpdateArgs!]!) { updateUsers(data: $data) { id name } }`,
                   variables: {
                     data: [
@@ -329,7 +315,7 @@ function stripStackTrace (errors: any[] = []) {
 
             test(
               'deleteMany',
-              runner(debug)(async ({ context, graphQLRequest }) => {
+              runner(debug, useHttp)(async ({ context, gql }) => {
                 // Start with some users
                 const users = await context.query.User.createMany({
                   data: [
@@ -343,7 +329,7 @@ function stripStackTrace (errors: any[] = []) {
                 })
 
                 // Mix of good and bad names
-                const { data, errors } = await runQuery(context, graphQLRequest, {
+                const { body: { data, errors } } = await gql({
                   query: `mutation ($where: [UserWhereUniqueInput!]!) { deleteUsers(where: $where) { id name } }`,
                   variables: {
                     where: [users[0].id, users[1].id, users[2].id, users[3].id].map(id => ({ id })),
@@ -380,12 +366,12 @@ function stripStackTrace (errors: any[] = []) {
           describe(`Field Hooks: ${phase}Change()`, () => {
             test(
               'update',
-              runner(debug)(async ({ context, graphQLRequest }) => {
+              runner(debug, useHttp)(async ({ context, gql }) => {
                 const post = await context.query.Post.createOne({
                   data: { title: 'original title', content: 'original content' },
                 })
 
-                const { data, errors } = await runQuery(context, graphQLRequest, {
+                const { body: { data, errors } } = await gql({
                   query: `mutation ($id: ID! $data: PostUpdateInput!) { updatePost(where: { id: $id }, data: $data) { id } }`,
                   variables: {
                     id: post.id,
@@ -410,11 +396,11 @@ function stripStackTrace (errors: any[] = []) {
 
             test(
               `delete`,
-              runner(debug)(async ({ context, graphQLRequest }) => {
+              runner(debug, useHttp)(async ({ context, gql }) => {
                 const post = await context.query.Post.createOne({
                   data: { title: `trigger ${phase} delete`, content: `trigger ${phase} delete` },
                 })
-                const { data, errors } = await runQuery(context, graphQLRequest, {
+                const { body: { data, errors } } = await gql({
                   query: `mutation ($id: ID!) { deletePost(where: { id: $id }) { id } }`,
                   variables: { id: post.id },
                 })
@@ -422,7 +408,7 @@ function stripStackTrace (errors: any[] = []) {
                 expect(stripStackTrace(errors)).toMatchSnapshot()
 
                 // Post should have its original data for 'before', and not exist for 'after'.
-                const result = await runQuery(context, graphQLRequest, {
+                const { body: result } = await gql({
                   query: `query ($id: ID!) { post(where: { id: $id }) { title content} }`,
                   variables: { id: post.id },
                 })

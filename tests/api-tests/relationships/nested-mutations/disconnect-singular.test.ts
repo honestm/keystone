@@ -4,7 +4,6 @@ import { list } from '@keystone-6/core'
 import { setupTestRunner } from '@keystone-6/api-tests/test-runner'
 import { allOperations, allowAll } from '@keystone-6/core/access'
 import { testConfig, expectGraphQLValidationError } from '../../utils'
-import { withServer } from '../../with-server'
 
 const alphanumGenerator = gen.alphaNumString.notEmpty()
 
@@ -82,8 +81,8 @@ describe('no access control', () => {
 
   test(
     'causes a validation error if used during create',
-    withServer(runner)(async ({ graphQLRequest }) => {
-      const { body } = await graphQLRequest({
+    runner(async ({ context }) => {
+      const { errors } = await context.graphql.raw({
         query: `
           mutation {
             createEvent(data: { group: { disconnect: true } }) {
@@ -94,8 +93,8 @@ describe('no access control', () => {
             }
           }
         `,
-      }).expect(400)
-      expectGraphQLValidationError(body.errors, [
+      })
+      expectGraphQLValidationError(errors, [
         {
           message: `Field "disconnect" is not defined by type "GroupRelateToOneForCreateInput". Did you mean \"connect\"?`,
         },
