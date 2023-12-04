@@ -29,7 +29,7 @@ import { dbProvider, dbUrl, SQLITE_DATABASE_FILENAME } from './utils'
 
 // you could call this a memory leak but it ends up being fine
 // because we're only going to run this on a reasonably small number of schemas and then exit
-const generatedPrismaModules = new Map<string, PrismaModule>()
+const prismaModuleCache = new Map<string, PrismaModule>()
 
 // a modified version of https://github.com/prisma/prisma/blob/bbdf1c23653a77b0b5bf7d62efd243dcebea018b/packages/client/src/utils/getTestClient.ts
 // yes, it's totally relying on implementation details
@@ -84,8 +84,8 @@ async function getTestPrismaModuleInner (schema: string) {
 }
 
 async function getTestPrismaModule (schema: string) {
-  if (generatedPrismaModules.has(schema)) return generatedPrismaModules.get(schema)!
-  return generatedPrismaModules.set(schema, await getTestPrismaModuleInner(schema)).get(schema)!
+  if (prismaModuleCache.has(schema)) return prismaModuleCache.get(schema)!
+  return prismaModuleCache.set(schema, await getTestPrismaModuleInner(schema)).get(schema)!
 }
 
 afterAll(async () => {
