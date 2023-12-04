@@ -1,11 +1,8 @@
-import { type Limit } from 'p-limit'
 import pluralize from 'pluralize'
 import { type PrismaModule } from '../../artifacts'
 import type { BaseItem, KeystoneConfig, KeystoneContext } from '../../types'
 import { getGqlNames } from '../../types/utils'
 import { humanize } from '../utils'
-import { prismaError } from './graphql-errors'
-import type { InitialisedList } from './initialise-lists'
 import type { PrismaFilter, UniquePrismaFilter } from './where-inputs'
 
 declare const prisma: unique symbol
@@ -75,20 +72,6 @@ export type PrismaClient = {
   $connect(): Promise<void>
   $transaction<T extends PrismaPromise<any>[]>(promises: [...T]): UnwrapPromises<T>
 } & Record<string, PrismaModel>
-
-// Run prisma operations as part of a resolver
-export async function runWithPrisma<T> (
-  context: KeystoneContext,
-  { prisma: { listKey } }: InitialisedList,
-  fn: (model: PrismaModel) => Promise<T>
-) {
-  const model = context.prisma[listKey]
-  try {
-    return await fn(model)
-  } catch (err: any) {
-    throw prismaError(err)
-  }
-}
 
 // this is wrong
 // all the things should be generic over the id type

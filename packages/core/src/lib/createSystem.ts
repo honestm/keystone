@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import type { FieldData, KeystoneConfig } from '../types'
+import { GraphQLError } from 'graphql'
 
 import type { PrismaModule } from '../artifacts'
 import { allowAll } from '../access'
@@ -92,6 +93,26 @@ function injectNewDefaults (prismaClient: any, lists: Record<string, Initialised
       })
     }
   }
+
+  prismaClient = prismaClient.$extends({
+    query: {
+      // prevent prisma messages bubbling out to GraphQL, TODO: remove in breaking change
+      async $allOperations({ model, operation, args, query }: any) {
+        try {
+          return await query(args)
+        } catch (e: any) {
+          throw new GraphQLError(`Prisma error`, {
+            extensions: {
+              code: 'KS_PRISMA_ERROR',
+              prisma: {
+                ...e
+              },
+            },
+          })
+        }
+      }
+    }
+  })
 
   return prismaClient
 }

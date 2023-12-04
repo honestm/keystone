@@ -7,12 +7,12 @@ import {
   type UniquePrismaFilter,
   resolveUniqueWhereInput,
   resolveWhereInput,
-  type UniqueInputFilter,
-  type InputFilter,
+  UniqueInputFilter,
+  InputFilter,
 } from '../where-inputs'
 import { limitsExceededError, userInputError } from '../graphql-errors'
 import type { InitialisedList } from '../initialise-lists'
-import { getDBFieldKeyForFieldOnMultiField, runWithPrisma } from '../utils'
+import { getDBFieldKeyForFieldOnMultiField } from '../utils'
 import { checkFilterOrderAccess } from '../filter-order-access'
 
 // we want to put the value we get back from the field's unique where resolver into an equals
@@ -93,7 +93,7 @@ export async function findOne (
   // apply access control
   const filter = await accessControlledFilter(list, context, resolvedWhere, accessFilters)
 
-  return runWithPrisma(context, list, model => model.findFirst({ where: filter }))
+  return await context.prisma[list.listKey].findFirst({ where: filter })
 }
 
 export async function findMany (
@@ -124,15 +124,13 @@ export async function findMany (
 
   const filter = await accessControlledFilter(list, context, resolvedWhere, accessFilters)
 
-  const results = await runWithPrisma(context, list, model =>
-    model.findMany({
-      where: extraFilter === undefined ? filter : { AND: [filter, extraFilter] },
-      orderBy,
-      take: take ?? undefined,
-      skip,
-      cursor: cursor ?? undefined,
-    })
-  )
+  const results = await context.prisma[list.listKey].findMany({
+    where: extraFilter === undefined ? filter : { AND: [filter, extraFilter] },
+    orderBy,
+    take: take ?? undefined,
+    skip,
+    cursor: cursor ?? undefined,
+  })
 
   if (list.cacheHint) {
     maybeCacheControlFromInfo(info)?.setCacheHint(
@@ -218,11 +216,10 @@ export async function count (
 
   const filter = await accessControlledFilter(list, context, resolvedWhere, accessFilters)
 
-  const count = await runWithPrisma(context, list, model =>
-    model.count({
-      where: extraFilter === undefined ? filter : { AND: [filter, extraFilter] },
-    })
-  )
+  const count = await context.prisma[list.listKey].count({
+    where: extraFilter === undefined ? filter : { AND: [filter, extraFilter] },
+  })
+
   if (list.cacheHint) {
     maybeCacheControlFromInfo(info)?.setCacheHint(
       list.cacheHint({
