@@ -106,8 +106,20 @@ export function createSystem (config: KeystoneConfig) {
     graphQLSchema,
     adminMeta,
     getKeystone: (prismaModule: PrismaModule) => {
+      const databaseUrl = new URL(config.db.url)
+      if (config.db.provider === 'sqlite' && !databaseUrl.searchParams.get('connection_limit')) {
+        // https://github.com/prisma/prisma/issues/9562
+        // https://github.com/prisma/prisma/issues/10403
+        // https://github.com/prisma/prisma/issues/11789
+        databaseUrl.searchParams.set('connection_limit', '1')
+      }
+
       const prePrismaClient = new prismaModule.PrismaClient({
-        datasources: { [config.db.provider]: { url: config.db.url } },
+        datasources: {
+          [config.db.provider]: {
+            url: databaseUrl.toString()
+          }
+        },
         log:
           config.db.enableLogging === true
             ? ['query']
