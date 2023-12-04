@@ -1,6 +1,6 @@
 import { type GraphQLError, type ExecutionResult } from 'graphql'
 import { type KeystoneContext } from '@keystone-6/core/types'
-import { setupTestEnv } from '@keystone-6/api-tests/test-runner'
+import { setupTestRunner } from '@keystone-6/api-tests/test-runner'
 import { expectAccessDenied } from '../utils'
 import {
   nameFn,
@@ -34,45 +34,41 @@ const expectNoAccessMany = (
   expectAccessDenied(errors, [{ path: [name, 0], msg }])
 }
 
+async function seed (context: KeystoneContext) {
+  // ensure every list has at least some data
+  const initialData: Record<string, { name: string }[]> = listAccessVariations.reduce(
+    (acc, access) =>
+      Object.assign(acc, {
+        [getOperationListName(access)]: [{ name: 'Hello' }, { name: 'Hi' }],
+        [getItemListName(access)]: [{ name: 'Hello' }, { name: 'Hi' }],
+        [getFilterListName(access)]: [{ name: 'Hello' }, { name: 'Hi' }],
+        [getFilterBoolListName(access)]: [{ name: 'Hello' }, { name: 'Hi' }],
+      }),
+    {}
+  )
+
+  for (const [listKey, _items] of Object.entries(initialData)) {
+    (await context.sudo().query[listKey].createMany({
+      data: _items,
+      query: 'id, name',
+    })) as { id: IdType, name: string }[]
+  }
+}
+
+const runner = setupTestRunner({
+  config
+})
+
 type IdType = any
 
 describe(`List access`, () => {
-  let context: KeystoneContext
-  let items: Record<string, { id: IdType, name: string }[]>
-
-  beforeAll(async () => {
-    const { context, connect, disconnect } = await setupTestEnv(config)
-    await connect()
-
-    afterAll(async () => {
-      await disconnect()
-    })
-
-    // ensure every list has at least some data
-    const initialData: Record<string, { name: string }[]> = listAccessVariations.reduce(
-      (acc, access) =>
-        Object.assign(acc, {
-          [getOperationListName(access)]: [{ name: 'Hello' }, { name: 'Hi' }],
-          [getItemListName(access)]: [{ name: 'Hello' }, { name: 'Hi' }],
-          [getFilterListName(access)]: [{ name: 'Hello' }, { name: 'Hi' }],
-          [getFilterBoolListName(access)]: [{ name: 'Hello' }, { name: 'Hi' }],
-        }),
-      {}
-    )
-    items = {}
-    for (const [listKey, _items] of Object.entries(initialData)) {
-      items[listKey] = (await context.sudo().query[listKey].createMany({
-        data: _items,
-        query: 'id, name',
-      })) as { id: IdType, name: string }[]
-    }
-  })
-
   describe('create', () => {
     for (const mode of ['operation', 'item'] as const) {
       describe(mode, () => {
-        listAccessVariations.forEach(access => {
-          test(`denied: - single - ${JSON.stringify(access)}`, async () => {
+        for (const access of listAccessVariations) {
+          test(`denied: - single - ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const createMutationName = `create${listKey}`
             const query = `mutation { ${createMutationName}(data: { name: "bar" }) { id } }`
@@ -86,8 +82,11 @@ describe(`List access`, () => {
                 where: { id: data![createMutationName].id },
               })
             }
-          })
-          test(`denied: - many - ${JSON.stringify(access)}`, async () => {
+          }))
+
+          test(`denied: - many - ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const createMutationName = `create${listKey}s`
             const query = `mutation { ${createMutationName}(data: [{ name: "bar" }]) { id } }`
@@ -106,39 +105,46 @@ describe(`List access`, () => {
                 where: { id: data![createMutationName][0].id },
               })
             }
-          })
-        })
+          }))
+        }
       })
     }
   })
 
   describe('query', () => {
-    (['operation', 'filter', 'filterBool'] as const).forEach(mode => {
+    for (const mode of ['operation', 'filter', 'filterBool'] as const) {
       describe(mode, () => {
-        listAccessVariations.forEach(access => {
-          test(`single not existing: ${JSON.stringify(access)}`, async () => {
+        for (const access of listAccessVariations) {
+          test(`single not existing: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const { itemQueryName } = context.gqlNames(listKey)
             const query = `query { ${itemQueryName}(where: { id: "${FAKE_ID}" }) { id } }`
             const { data, errors } = (await context.graphql.raw({ query })) as ExecutionResult<any>
             expect(errors).toBe(undefined)
             expect(data![itemQueryName]).toBe(null)
-          })
-          test(`multiple not existing: ${JSON.stringify(access)}`, async () => {
+          }))
+
+          test(`multiple not existing: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const _items = await context.query[listKey].findMany({
               where: { id: { in: [FAKE_ID, FAKE_ID_2] } },
             })
             expect(_items).toHaveLength(0)
-          })
-        })
+          }))
+        }
       })
-    });
+    }
 
-    (['operation', 'filterBool'] as const).forEach(mode => {
+    for (const mode of ['operation', 'filterBool'] as const) {
       describe(mode, () => {
-        listAccessVariations.forEach(access => {
-          test(`'all' denied: ${JSON.stringify(access)}`, async () => {
+        for (const access of listAccessVariations) {
+          test(`'all' denied: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const allQueryName = context.gqlNames(listKey).listQueryName
             const query = `query { ${allQueryName} { id } }`
@@ -149,9 +155,11 @@ describe(`List access`, () => {
             } else {
               expect(data![allQueryName]).toHaveLength(2)
             }
-          })
+          }))
 
-          test(`count denied: ${JSON.stringify(access)}`, async () => {
+          test(`count denied: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const countName = `${listKey.slice(0, 1).toLowerCase() + listKey.slice(1)}sCount`
             const query = `query { ${countName} }`
@@ -162,9 +170,11 @@ describe(`List access`, () => {
             } else {
               expect(data![countName]).toEqual(2)
             }
-          })
+          }))
 
-          test(`single denied: ${JSON.stringify(access)}`, async () => {
+          test(`single denied: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const item = await context.sudo().query[listKey].createOne({ data: {} })
             const singleQueryName = context.gqlNames(listKey).itemQueryName
@@ -177,14 +187,17 @@ describe(`List access`, () => {
               expect(data![singleQueryName]).toEqual({ id: item.id })
             }
             await context.sudo().query[listKey].deleteOne({ where: { id: item.id } })
-          })
-        })
+          }))
+        }
       })
-    });
-    (['filter'] as const).forEach(mode => {
+    }
+
+    for (const mode of ['filter'] as const) {
       describe(mode, () => {
-        listAccessVariations.forEach(access => {
-          test(`'all' denied: ${JSON.stringify(access)}`, async () => {
+        for (const access of listAccessVariations) {
+          test(`'all' denied: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const allQueryName = context.gqlNames(listKey).listQueryName
             const query = `query { ${allQueryName} { id } }`
@@ -195,9 +208,11 @@ describe(`List access`, () => {
             } else {
               expect(data![allQueryName]).toHaveLength(1)
             }
-          })
+          }))
 
-          test(`count denied: ${JSON.stringify(access)}`, async () => {
+          test(`count denied: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const countName = `${listKey.slice(0, 1).toLowerCase() + listKey.slice(1)}sCount`
             const query = `query { ${countName} }`
@@ -208,9 +223,11 @@ describe(`List access`, () => {
             } else {
               expect(data![countName]).toEqual(1)
             }
-          })
+          }))
 
-          test(`single denied: ${JSON.stringify(access)}`, async () => {
+          test(`single denied: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const item1 = await context.sudo().query[listKey].createOne({ data: { name: 'foo' } })
             const item2 = await context
@@ -241,17 +258,19 @@ describe(`List access`, () => {
               expect(result.data![singleQueryName]).toEqual({ id: item2.id })
             }
             await context.sudo().query[listKey].deleteOne({ where: { id: item2.id } })
-          })
-        })
+          }))
+        }
       })
-    })
+    }
   })
 
   describe('update', () => {
-    (['operation', 'filter', 'filterBool', 'item'] as const).forEach(mode => {
+    for (const mode of ['operation', 'filter', 'filterBool', 'item'] as const) {
       describe(mode, () => {
-        listAccessVariations.forEach(access => {
-          test(`denies missing: ${JSON.stringify(access)}`, async () => {
+        for (const access of listAccessVariations) {
+          test(`denies missing: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const updateMutationName = `update${listKey}`
             const query = `mutation { ${updateMutationName}(where: { id: "${FAKE_ID}" }, data: { name: "bar" }) { id } }`
@@ -262,14 +281,17 @@ describe(`List access`, () => {
               updateMutationName,
               `You cannot update that ${listKey} - it may not exist`
             )
-          })
-        })
+          }))
+        }
       })
-    });
-    (['operation', 'filterBool', 'item'] as const).forEach(mode => {
+    }
+
+    for (const mode of ['operation', 'filterBool', 'item'] as const) {
       describe(mode, () => {
-        listAccessVariations.forEach(access => {
-          test(`denies: - single - ${JSON.stringify(access)}`, async () => {
+        for (const access of listAccessVariations) {
+          test(`denies: - single - ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const item = await context.sudo().query[listKey].createOne({ data: {} })
             const updateMutationName = `update${listKey}`
@@ -288,8 +310,11 @@ describe(`List access`, () => {
             }
 
             await context.sudo().query[listKey].deleteOne({ where: { id: item.id } })
-          })
-          test(`denies: - many - ${JSON.stringify(access)}`, async () => {
+          }))
+
+          test(`denies: - many - ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const item = await context.sudo().query[listKey].createOne({ data: {} })
             const updateMutationName = `update${listKey}s`
@@ -307,14 +332,17 @@ describe(`List access`, () => {
               expect(data![updateMutationName]).toEqual([{ id: item.id, name: 'bar' }])
             }
             await context.sudo().query[listKey].deleteOne({ where: { id: item.id } })
-          })
-        })
+          }))
+        }
       })
-    });
-    (['filter'] as const).forEach(mode => {
+    }
+
+    for (const mode of ['filter'] as const) {
       describe(mode, () => {
-        listAccessVariations.forEach(access => {
-          test(`denies: - single - ${JSON.stringify(access)}`, async () => {
+        for (const access of listAccessVariations) {
+          test(`denies: - single - ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const item1 = await context.sudo().query[listKey].createOne({ data: { name: 'foo' } })
             const item2 = await context
@@ -348,9 +376,11 @@ describe(`List access`, () => {
               expect(result.data![updateMutationName]).not.toEqual(null)
             }
             await context.sudo().query[listKey].deleteOne({ where: { id: item2.id } })
-          })
+          }))
 
-          test(`denies: - many - ${JSON.stringify(access)}`, async () => {
+          test(`denies: - many - ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const item1 = await context.sudo().query[listKey].createOne({ data: { name: 'foo' } })
             const item2 = await context
@@ -383,17 +413,19 @@ describe(`List access`, () => {
               expect(result.data![updateMutationName][0]).not.toEqual(null)
             }
             await context.sudo().query[listKey].deleteOne({ where: { id: item2.id } })
-          })
-        })
+          }))
+        }
       })
-    })
+    }
   })
 
   describe('delete', () => {
-    (['operation', 'filter', 'filterBool', 'item'] as const).forEach(mode => {
+    for (const mode of ['operation', 'filter', 'filterBool', 'item'] as const) {
       describe(mode, () => {
-        listAccessVariations.forEach(access => {
-          test(`single denies missing: ${JSON.stringify(access)}`, async () => {
+        for (const access of listAccessVariations) {
+          test(`single denies missing: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const deleteMutationName = `delete${listKey}`
             const query = `mutation { ${deleteMutationName}(where: { id: "${FAKE_ID}" }) { id } }`
@@ -404,9 +436,11 @@ describe(`List access`, () => {
               deleteMutationName,
               `You cannot delete that ${listKey} - it may not exist`
             )
-          })
+          }))
 
-          test(`multi denies missing: ${JSON.stringify(access)}`, async () => {
+          test(`multi denies missing: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const multiDeleteMutationName = `delete${listKey}s`
             const query = `mutation { ${multiDeleteMutationName}(where: [{ id: "${FAKE_ID}" }, { id: "${FAKE_ID_2}" }]) { id } }`
@@ -435,15 +469,17 @@ describe(`List access`, () => {
               ])
             }
             expect(data).toEqual({ [multiDeleteMutationName]: [null, null] })
-          })
-        })
+          }))
+        }
       })
-    });
+    }
 
-    (['operation', 'filterBool', 'item'] as const).forEach(mode => {
+    for (const mode of ['operation', 'filterBool', 'item'] as const) {
       describe(mode, () => {
-        listAccessVariations.forEach(access => {
-          test(`single denied: ${JSON.stringify(access)}`, async () => {
+        for (const access of listAccessVariations) {
+          test(`single denied: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const item = await context.sudo().query[listKey].createOne({ data: {} })
 
@@ -465,9 +501,11 @@ describe(`List access`, () => {
             if (!access.delete) {
               await context.sudo().query[listKey].deleteOne({ where: { id: item.id } })
             }
-          })
+          }))
 
-          test(`multi denied: ${JSON.stringify(access)}`, async () => {
+          test(`multi denied: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const item = await context.sudo().query[listKey].createOne({ data: {} })
 
@@ -490,14 +528,17 @@ describe(`List access`, () => {
             if (!access.delete) {
               await context.sudo().query[listKey].deleteOne({ where: { id: item.id } })
             }
-          })
-        })
+          }))
+        }
       })
-    });
-    (['filter'] as const).forEach(mode => {
+    }
+
+    for (const mode of ['filter'] as const) {
       describe(mode, () => {
-        listAccessVariations.forEach(access => {
-          test(`single denied: ${JSON.stringify(access)}`, async () => {
+        for (const access of listAccessVariations) {
+          test(`single denied: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const item1 = await context.sudo().query[listKey].createOne({ data: { name: 'foo' } })
             const item2 = await context
@@ -536,9 +577,11 @@ describe(`List access`, () => {
             if (!access.delete) {
               await context.sudo().query[listKey].deleteOne({ where: { id: item2.id } })
             }
-          })
+          }))
 
-          test(`multi denied: ${JSON.stringify(access)}`, async () => {
+          test(`multi denied: ${JSON.stringify(access)}`, runner(async ({ context }) => {
+            await seed(context)
+
             const listKey = nameFn[mode](access)
             const item1 = await context.sudo().query[listKey].createOne({ data: { name: 'foo' } })
             const item2 = await context
@@ -575,9 +618,9 @@ describe(`List access`, () => {
             if (!access.delete) {
               await context.sudo().query[listKey].deleteOne({ where: { id: item2.id } })
             }
-          })
-        })
+          }))
+        }
       })
-    })
+    }
   })
 })

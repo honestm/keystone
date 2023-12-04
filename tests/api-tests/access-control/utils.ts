@@ -169,6 +169,7 @@ listAccessVariations.forEach(access => {
     },
   })
 })
+
 const auth = createAuth({
   listKey: 'User',
   identityField: 'email',

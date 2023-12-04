@@ -1,58 +1,54 @@
 import { type KeystoneContext } from '@keystone-6/core/types'
-import { setupTestEnv } from '@keystone-6/api-tests/test-runner'
+import { setupTestRunner } from '@keystone-6/api-tests/test-runner'
 import { text, relationship, integer } from '@keystone-6/core/fields'
 import { list } from '@keystone-6/core'
 import { allowAll } from '@keystone-6/core/access'
 import { testConfig } from '../utils'
 
-const config = testConfig({
-  lists: {
-    Post: list({
-      access: allowAll,
-      fields: {
-        order: integer({ isIndexed: 'unique' }),
-        author: relationship({ ref: 'User.posts', many: true }),
-      },
-    }),
-    User: list({
-      access: allowAll,
-      fields: {
-        name: text(),
-        posts: relationship({ ref: 'Post.author', many: true }),
-      },
-    }),
-  },
+const runner = setupTestRunner({
+	config: testConfig({
+		lists: {
+			Post: list({
+				access: allowAll,
+				fields: {
+					order: integer({ isIndexed: 'unique' }),
+					author: relationship({ ref: 'User.posts', many: true }),
+				},
+			}),
+			User: list({
+				access: allowAll,
+				fields: {
+					name: text(),
+					posts: relationship({ ref: 'Post.author', many: true }),
+				},
+			}),
+		},
+	})
 })
 
-describe('cursor pagination basic tests', () => {
-  let context: KeystoneContext
-  let posts: { id: string }[]
-  let userId: string
-
-  beforeAll(async () => {
-    const { context: context_, connect, disconnect } = await setupTestEnv(config)
-    context = context_
-    await connect()
-
-    afterAll(async () => {
-      await disconnect()
-    })
-
-    const result = await context.query.User.createOne({
-      data: {
-        name: 'Test',
-        posts: {
-          create: Array.from(Array(15).keys()).map(num => ({ order: num })),
-        },
+async function seed (context: KeystoneContext) {
+  const result = await context.query.User.createOne({
+    data: {
+      name: 'Test',
+      posts: {
+        create: Array.from(Array(15).keys()).map(num => ({ order: num })),
       },
-      query: 'id posts { id order }',
-    })
-    userId = result.id
-    // posts will be added in random sequence, so need to sort by order
-    posts = result.posts.sort((a: { order: number }, b: { order: number }) => a.order - b.order)
+    },
+    query: 'id posts { id order }',
   })
 
-  test('cursor pagination test (graphql api)', async () => {
+  // posts will be added in random sequence, we order them for deterministic results
+  const posts = result.posts.sort((a: { order: number }, b: { order: number }) => a.order - b.order)
+  return {
+    userId: result.id,
+    posts
+  }
+}
+
+describe('cursor pagination basic tests', () => {
+  test('cursor pagination test (graphql api)', runner(async ({ context }) => {
+		const { posts } = await seed(context)
+
     const { errors, data } = await context.graphql.raw({
       query: `query { posts(
           take: 6,\
@@ -67,9 +63,11 @@ describe('cursor pagination basic tests', () => {
     expect(data).toEqual({
       posts: Array.from(Array(6).keys()).map(_ => posts[currentOrder++]),
     })
-  })
+  }))
 
-  test('cursor pagination test (query api)', async () => {
+  test('cursor pagination test (query api)', runner(async ({ context }) => {
+		const { posts } = await seed(context)
+
     const result1 = await context.query.Post.findMany({
       take: 6,
       skip: 1,
@@ -81,9 +79,11 @@ describe('cursor pagination basic tests', () => {
     expect(result1.length).toBe(6)
     let currentOrder = 6
     expect(result1).toEqual(Array.from(Array(6).keys()).map(_ => posts[currentOrder++]))
-  })
+  }))
 
-  test('cursor pagination test (db api)', async () => {
+  test('cursor pagination test (db api)', runner(async ({ context }) => {
+		const { posts } = await seed(context)
+
     const result1 = await context.db.Post.findMany({
       take: 6,
       skip: 1,
@@ -94,9 +94,11 @@ describe('cursor pagination basic tests', () => {
     expect(result1.length).toBe(6)
     let currentOrder = 6
     expect(result1).toEqual(Array.from(Array(6).keys()).map(_ => posts[currentOrder++]))
-  })
+  }))
 
-  test('cursor pagination through relation', async () => {
+  test('cursor pagination through relation', runner(async ({ context }) => {
+		const { userId, posts } = await seed(context)
+
     const { errors, data } = await context.graphql.raw({
       query: `query {\
         user(where: { id: "${userId}"}) {\
@@ -114,9 +116,11 @@ describe('cursor pagination basic tests', () => {
     expect(data).toEqual({
       user: { posts: Array.from(Array(6).keys()).map(_ => posts[currentOrder++]) },
     })
-  })
+  }))
 
-  test('cursor pagination forward', async () => {
+  test('cursor pagination forward', runner(async ({ context }) => {
+		const { posts } = await seed(context)
+
     const result1 = await context.query.Post.findMany({
       take: 6,
       orderBy: { order: 'asc' },
@@ -147,9 +151,11 @@ describe('cursor pagination basic tests', () => {
 
     expect(result3).toBeDefined()
     expect(result3).toEqual(Array.from(Array(3).keys()).map(_ => posts[currentOrder++]))
-  })
+  }))
 
-  test('cursor pagination backwards', async () => {
+  test('cursor pagination backwards', runner(async ({ context }) => {
+		const { posts } = await seed(context)
+
     const result1 = await context.query.Post.findMany({
       take: -6,
       orderBy: { order: 'desc' },
@@ -182,35 +188,13 @@ describe('cursor pagination basic tests', () => {
     expect(result3).toBeDefined()
     currentOrder = 14
     expect(result3).toEqual(Array.from(Array(3).keys()).map(_ => posts[currentOrder--]))
-  })
+  }))
 })
 
 describe('cursor pagination stability', () => {
-  let context: KeystoneContext
-  let posts: { id: string }[]
+  test('insert rows in the middle of pagination and check stability', runner(async ({ context }) => {
+    const { posts } = await seed(context)
 
-  beforeEach(async () => {
-    const { context, connect, disconnect } = await setupTestEnv(config)
-    await connect()
-
-    afterAll(async () => {
-      await disconnect()
-    })
-
-    const result = await context.query.User.createOne({
-      data: {
-        name: 'Test',
-        posts: {
-          create: Array.from(Array(15).keys()).map(num => ({ order: num })),
-        },
-      },
-      query: 'id posts { id order }',
-    })
-    // posts will be added in random sequence, so need to sort by order
-    posts = result.posts.sort((a: { order: number }, b: { order: number }) => a.order - b.order)
-  })
-
-  test('insert rows in the middle of pagination and check stability', async () => {
     const result1 = await context.query.Post.findMany({
       take: 3,
       skip: 1,
@@ -236,5 +220,5 @@ describe('cursor pagination stability', () => {
     expect(result2).toBeDefined()
     currentOrder = 9
     expect(result2).toEqual(Array.from(Array(3).keys()).map(_ => posts[currentOrder--]))
-  })
+  }))
 })
