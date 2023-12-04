@@ -93,11 +93,11 @@ export function getSystemPaths (cwd: string, config: KeystoneConfig) {
     : null
 
   const builtTypesPath = config.types?.path
-    ? path.join(cwd, config.types.path)
+    ? path.join(cwd, config.types.path) // TODO: assume initConfig
     : path.join(cwd, 'node_modules/.keystone/types.ts')
 
   const builtPrismaPath = config.db?.prismaSchemaPath
-    ? path.join(cwd, config.db.prismaSchemaPath)
+    ? path.join(cwd, config.db.prismaSchemaPath) // TODO: assume initConfig
     : path.join(cwd, 'schema.prisma')
 
   const relativePrismaPath = prismaClientPath
@@ -105,7 +105,7 @@ export function getSystemPaths (cwd: string, config: KeystoneConfig) {
     : '@prisma/client'
 
   const builtGraphqlPath = config.graphql?.schemaPath
-    ? path.join(cwd, config.graphql.schemaPath)
+    ? path.join(cwd, config.graphql.schemaPath) // TODO: assume initConfig
     : path.join(cwd, 'schema.graphql')
 
   return {

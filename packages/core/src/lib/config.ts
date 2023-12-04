@@ -64,9 +64,20 @@ export function initConfig (config: KeystoneConfig) {
   // WARNING: Typescript should prevent this, but empty string is useful for Prisma errors
   config.db.url ??= 'postgres://'
 
-  // TODO: use zod or something if want to follow this path
+  // TODO: use zod or something to follow this path
   return {
+    types: {
+      path: 'node_modules/.keystone/types.ts'
+    },
     ...config,
+    db: {
+      prismaSchemaPath: 'schema.prisma',
+      ...config.db,
+    },
+    graphql: {
+      schemaPath: 'schema.graphql',
+      ...config.graphql,
+    },
     lists: applyIdFieldDefaults(config),
   }
 }
